@@ -1,0 +1,29 @@
+{
+  "name": "post-app-clone",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "autoprefixer": "^10.4.22",
+    "axios": "^1.12.2",
+    "dayjs": "^1.11.19",
+    "firebase": "^12.3.0",
+    "lucide-react": "^0.545.0",
+    "next": "^16.0.10",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4.1.17",
+    "eslint": "^9",
+    "eslint-config-next": "^16.0.10",
+    "tailwindcss": "^4"
+  }
+}
