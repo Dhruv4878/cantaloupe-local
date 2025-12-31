@@ -29,8 +29,6 @@ const GlassCard = ({ children, className = "" }) => (
   </div>
 );
 
-
-
 // --- Helper Components --- //
 const platformIcons = {
   instagram: <Instagram size={16} />,
@@ -38,6 +36,20 @@ const platformIcons = {
   linkedin: <Linkedin size={16} />,
   x: <Twitter size={16} />,
 };
+
+// --- Helper Button (Orange) --- //
+const OrangeButton = ({ children, className = "", disabled, onClick, type = "button" }) => (
+  <button
+    type={type}
+    onClick={onClick}
+    disabled={disabled}
+    className={`relative inline-flex items-center justify-center font-medium transition-all duration-200 
+      ${disabled ? "opacity-50 cursor-not-allowed bg-gray-600" : "hover:scale-[1.02] active:scale-95"}
+      bg-gradient-to-r from-orange-500 to-amber-500 text-white ${className}`}
+  >
+    {children}
+  </button>
+);
 
 const PostEditor = () => {
   const router = useRouter();
@@ -66,11 +78,17 @@ const PostEditor = () => {
   const [isAddPlatformsOpen, setIsAddPlatformsOpen] = useState(false);
   const [captionLoading, setCaptionLoading] = useState(false);
   const [hashtagsLoading, setHashtagsLoading] = useState(false);
-  const [postToast, setPostToast] = useState("");
+
+  // TOAST STATE (Message + Type)
+  const [toastState, setToastState] = useState({ message: "", type: "" });
+
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
   const [isScheduling, setIsScheduling] = useState(false);
+  
+  // NEW STATE: Schedule for all connected platforms
+  const [scheduleAll, setScheduleAll] = useState(false);
 
   const [addPlatformsSelection, setAddPlatformsSelection] = useState({});
   const [addPlatformsLoading, setAddPlatformsLoading] = useState(false);
@@ -84,7 +102,13 @@ const PostEditor = () => {
     hashtagsLoading ||
     isScheduling;
 
-
+  // --- Helper: Show Toast ---
+  const showToast = (message, type = "success") => {
+    setToastState({ message, type });
+    setTimeout(() => {
+      setToastState({ message: "", type: "" });
+    }, 3500);
+  };
 
   useEffect(() => {
     function handleDocClick(e) {
@@ -101,10 +125,6 @@ const PostEditor = () => {
     return () => document.removeEventListener("mousedown", handleDocClick);
   }, []);
 
-  function handlerRegenerate() {
-    router.push("/generate");
-  }
-
   const toggleRegenerateOption = (key) => {
     setRegenerateOptions((prev) => {
       if (key === "post") {
@@ -120,35 +140,6 @@ const PostEditor = () => {
 
   const handleRegeneratePost = () => {
     router.push("/generate");
-  };
-
-  const readJsonSafely = async (response) => {
-    const contentType = response.headers?.get?.("content-type") || "";
-    if (contentType.includes("application/json")) {
-      try {
-        return await response.json();
-      } catch (_) {
-        return null;
-      }
-    }
-    try {
-      const text = await response.text();
-      return JSON.parse(text);
-    } catch (_) {
-      return null;
-    }
-  };
-
-  const buildHttpError = async (response, defaultMessage) => {
-    const body = await readJsonSafely(response);
-    const messageFromBody = body?.message || body?.error || body?.detail;
-    const statusInfo = `(${response.status}${response.statusText ? " " + response.statusText : ""
-      })`;
-    const err = new Error(
-      messageFromBody || `${defaultMessage} ${statusInfo}`.trim()
-    );
-    err.status = response.status;
-    return err;
   };
 
   const handleRegenerateSelected = async () => {
@@ -341,13 +332,9 @@ const PostEditor = () => {
   };
 
   const [isPostMenuOpen, setIsPostMenuOpen] = useState(false);
-  // helper map (put at top of file)
   const mapUiToBackendPlatform = (uiKey) => (uiKey === "x" ? "twitter" : uiKey);
-  // In your Post.jsx (or the file you posted earlier) replace the functions:
 
-  // helper map (put at top of file)
-
-  // handlePublishNow
+  // --- HANDLE PUBLISH (With Red Toast on Error) ---
   const handlePublishNow = async () => {
     try {
       if (!postId || !activeTab) return;
@@ -356,17 +343,15 @@ const PostEditor = () => {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
       const token = typeof window !== "undefined" ? sessionStorage.getItem("authToken") : null;
       if (!token) {
-        setError("Please login again.");
+        showToast("Please login again.", "error");
         router.push("/login");
         return;
       }
 
-      // send mapped platform (map "x" -> "twitter")
       const platformToSend = mapUiToBackendPlatform(activeTab);
 
-      // Validate we support the requested platform
       if (!["facebook", "instagram", "linkedin", "twitter"].includes(platformToSend)) {
-        setPostToast(`Posting to ${activeTab} is not supported yet.`);
+        showToast(`Posting to ${activeTab} is not supported yet.`, "error");
         setIsPosting(false);
         return;
       }
@@ -380,26 +365,35 @@ const PostEditor = () => {
         body: JSON.stringify({ postId, platform: platformToSend }),
       });
 
+      // Handle Errors
       if (!resp.ok) {
-        const txt = await resp.text();
-        throw new Error(`Failed to post to ${activeTab}: ${txt}`);
+        let errorMessage = "Unknown error";
+        try {
+          const errData = await resp.json();
+          errorMessage = errData.error || errData.message || errData.detail || "Request failed";
+        } catch (e) {
+          errorMessage = await resp.text();
+        }
+        throw new Error(errorMessage);
       }
 
-      setPostToast(`Posted to ${activeTab === "x" ? "X (Twitter)" : activeTab} successfully`);
-      setTimeout(() => setPostToast(""), 3000);
+      // Success
+      showToast(`Posted to ${activeTab === "x" ? "X (Twitter)" : activeTab} successfully`, "success");
+
     } catch (e) {
       console.error(e);
-      setError(e.message || "Failed to post");
+      // RED TOAST FOR ERROR
+      showToast(`Failed to post to ${activeTab}: ${e.message}`, "error");
     } finally {
       setIsPosting(false);
     }
   };
 
 
+  // --- UPDATED: HANDLE SCHEDULE (Supports 'All Connected') ---
   const handleSchedulePost = async () => {
     if (!scheduleDate || !scheduleTime) {
-      setPostToast("Please choose both date and time to schedule.");
-      setTimeout(() => setPostToast(""), 2500);
+      showToast("Please choose both date and time to schedule.", "error");
       return;
     }
 
@@ -408,31 +402,51 @@ const PostEditor = () => {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
       const token = typeof window !== "undefined" ? sessionStorage.getItem("authToken") : null;
       if (!token) {
-        setError("Please login again.");
+        showToast("Please login again.", "error");
         router.push("/login");
         return;
       }
       if (!postId || !activeTab) {
-        setPostToast("Missing post or platform to schedule.");
-        setTimeout(() => setPostToast(""), 2500);
+        showToast("Missing post or platform to schedule.", "error");
         return;
       }
 
-      // Build scheduled datetime in local timezone
       const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`);
       if (Number.isNaN(scheduledAt.getTime())) {
-        setPostToast("Invalid date/time");
-        setTimeout(() => setPostToast(""), 2500);
+        showToast("Invalid date/time", "error");
         return;
       }
       const timezone =
         Intl.DateTimeFormat().resolvedOptions().timeZone ||
         "UTC";
 
-      // Map UI tab to backend platform key
-      const platformToSend = mapUiToBackendPlatform(activeTab);
+      // 1. DETERMINE TARGET PLATFORMS
+      let targetPlatforms = [];
+      
+      if (scheduleAll) {
+        // Fetch profile to find ALL connected platforms
+        const profResp = await fetch(`${apiUrl}/profile/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!profResp.ok) throw new Error("Failed to fetch connected accounts");
+        const profile = await profResp.json();
 
-      // Fetch current post to merge schedule entries
+        if (profile?.social?.facebook?.pageId && profile?.social?.facebook?.accessToken) targetPlatforms.push("facebook");
+        if (profile?.social?.instagram?.igBusinessId && profile?.social?.instagram?.accessToken) targetPlatforms.push("instagram");
+        if (profile?.social?.linkedin?.memberId && profile?.social?.linkedin?.accessToken) targetPlatforms.push("linkedin");
+        if (profile?.social?.twitter?.userId && profile?.social?.twitter?.accessToken) targetPlatforms.push("twitter");
+
+        if (targetPlatforms.length === 0) {
+            showToast("No connected platforms found to schedule.", "error");
+            setIsScheduling(false);
+            return;
+        }
+      } else {
+        // Just the current active tab
+        targetPlatforms = [mapUiToBackendPlatform(activeTab)];
+      }
+
+      // 2. GET EXISTING SCHEDULE
       const existingResp = await fetch(`${apiUrl}/posts/${postId}`, {
         headers: {
           "Content-Type": "application/json",
@@ -444,34 +458,35 @@ const PostEditor = () => {
       }
       const existingPost = await existingResp.json();
       const existingSchedule = existingPost?.schedule || {};
-      const existingEntries = Array.isArray(existingSchedule.entries)
+      let existingEntries = Array.isArray(existingSchedule.entries)
         ? existingSchedule.entries
         : [];
 
-      // Upsert schedule entry for this platform at this datetime
-      const newEntry = {
-        platform: platformToSend,
-        scheduledAt,
-        status: "pending",
-        timezone,
-      };
+      // 3. MERGE / UPSERT ENTRIES
+      // We start with existing entries...
+      let mergedEntries = [...existingEntries];
 
-      const mergedEntries = [
-        ...existingEntries.filter(
-          (e) =>
-            !(
-              e.platform === platformToSend &&
-              new Date(e.scheduledAt).getTime() === scheduledAt.getTime()
-            )
-        ),
-        newEntry,
-      ];
+      targetPlatforms.forEach(p => {
+         // Remove any conflict for this specific platform & time (overwrite logic)
+         mergedEntries = mergedEntries.filter(
+            (e) => !(e.platform === p && new Date(e.scheduledAt).getTime() === scheduledAt.getTime())
+         );
+         
+         // Add new entry
+         mergedEntries.push({
+            platform: p,
+            scheduledAt,
+            status: "pending",
+            timezone,
+         });
+      });
 
       const schedulePayload = {
         timezone: existingSchedule.timezone || timezone,
         entries: mergedEntries,
       };
 
+      // 4. SEND UPDATE
       const updateResp = await fetch(`${apiUrl}/posts/${postId}`, {
         method: "PUT",
         headers: {
@@ -486,15 +501,16 @@ const PostEditor = () => {
         throw new Error(txt || "Failed to save schedule");
       }
 
-      setPostToast(
-        `Scheduled ${activeTab === "x" ? "X (Twitter)" : activeTab} for ${scheduledAt.toLocaleString()}`
-      );
-      setTimeout(() => setPostToast(""), 3000);
+      const msg = scheduleAll 
+        ? `Scheduled for all ${targetPlatforms.length} connected platforms at ${scheduledAt.toLocaleString()}`
+        : `Scheduled ${activeTab === "x" ? "X (Twitter)" : activeTab} for ${scheduledAt.toLocaleString()}`;
+      
+      showToast(msg, "success");
       setIsScheduleOpen(false);
+
     } catch (e) {
       console.error(e);
-      setPostToast(e.message || "Failed to schedule post.");
-      setTimeout(() => setPostToast(""), 3000);
+      showToast(e.message || "Failed to schedule post.", "error");
     } finally {
       setIsScheduling(false);
     }
@@ -508,7 +524,7 @@ const PostEditor = () => {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
       const token = typeof window !== "undefined" ? sessionStorage.getItem("authToken") : null;
       if (!token) {
-        setError("Please login again.");
+        showToast("Please login again.", "error");
         router.push("/login");
         return;
       }
@@ -526,32 +542,50 @@ const PostEditor = () => {
       if (profile?.social?.twitter?.userId && profile?.social?.twitter?.accessToken) targets.push("twitter");
 
       if (!targets.length) {
-        setPostToast("No connected platforms found");
-        setTimeout(() => setPostToast(""), 2500);
+        showToast("No connected platforms found", "error");
         return;
       }
 
-      // Post serially (you can parallelize if you want)
+      let failed = [];
+      let succeeded = [];
+
       for (const p of targets) {
-        const resp = await fetch(`${apiUrl}/social/post`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ postId, platform: p }),
-        });
-        if (!resp.ok) {
-          const txt = await resp.text();
-          console.error(`Failed to post to ${p}:`, txt);
+        try {
+          const resp = await fetch(`${apiUrl}/social/post`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ postId, platform: p }),
+          });
+
+          if (!resp.ok) {
+            const txt = await resp.text();
+            failed.push(p);
+            console.error(`Failed to post to ${p}:`, txt);
+          } else {
+            succeeded.push(p);
+          }
+        } catch (err) {
+          failed.push(p);
+          console.error(`Network error for ${p}`, err);
         }
       }
 
-      setPostToast("Posted to all connected platforms");
-      setTimeout(() => setPostToast(""), 3000);
+      if (failed.length > 0) {
+        if (succeeded.length === 0) {
+          showToast("Failed to post to any platform.", "error");
+        } else {
+          showToast(`Posted to ${succeeded.length} platforms. Failed: ${failed.join(", ")}`, "error");
+        }
+      } else {
+        showToast("Posted to all connected platforms!", "success");
+      }
+
     } catch (e) {
       console.error(e);
-      setError(e.message || "Failed to post to all platforms");
+      showToast(e.message || "Failed to post to all platforms", "error");
     } finally {
       setIsPostMenuOpen(false);
       setIsPosting(false);
@@ -713,7 +747,6 @@ const PostEditor = () => {
 
   const handleCancelEdit = () => {
     setIsEditing(false);
-    // no need to reset text; generatedData never changed until Save
   };
 
   const hasChanges =
@@ -1018,23 +1051,25 @@ const PostEditor = () => {
 
             {/* TEXT COLUMN */}
             <div className="lg:col-span-5 self-stretch h-full">
-              {/* Tabs */}
-              <div className="mb-4 border-b border-white/10">
-                <nav className="flex space-x-4">
+              
+              {/* RESPONSIVE TABS (Grid 2x2 on Mobile, Flex on Desktop) */}
+              <div className="mb-4 border-b border-white/10 pb-2">
+                <nav className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
                   {platformNames.map((platform) => (
                     <button
                       key={platform}
                       onClick={() => !uiDisabled && setActiveTab(platform)}
                       disabled={uiDisabled}
-                      className={`flex items-center gap-2 py-2 px-1 border-b-2 font-medium capitalize ${activeTab === platform
-                        ? "border-orange-400 text-orange-300"
-                        : uiDisabled
-                          ? "border-transparent text-gray-500 cursor-not-allowed"
-                          : "border-transparent text-gray-300 hover:text-white"
+                      className={`flex items-center justify-center sm:justify-start gap-2 py-2 px-2 border-b-2 font-medium capitalize transition-colors
+                        ${activeTab === platform
+                          ? "border-orange-400 text-orange-300 bg-white/5 sm:bg-transparent rounded sm:rounded-none"
+                          : uiDisabled
+                            ? "border-transparent text-gray-500 cursor-not-allowed"
+                            : "border-transparent text-gray-300 hover:text-white hover:bg-white/5 sm:hover:bg-transparent rounded sm:rounded-none"
                         }`}
                     >
                       {platformIcons[platform]}
-                      {platform}
+                      <span className="text-sm">{platform}</span>
                     </button>
                   ))}
                 </nav>
@@ -1187,7 +1222,8 @@ const PostEditor = () => {
                           type="date"
                           value={scheduleDate}
                           onChange={(e) => setScheduleDate(e.target.value)}
-                          className="w-full bg-black/40 border border-white/20 rounded-xl px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                          className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400"
+
                         />
                       </div>
                       <div>
@@ -1199,10 +1235,23 @@ const PostEditor = () => {
                           value={scheduleTime}
                           onChange={(e) => setScheduleTime(e.target.value)}
                           step="900" // 15 min steps
-                          className="w-full bg-black/40 border border-white/20 rounded-xl px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                          className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400"
+
                         />
                       </div>
                     </div>
+
+                    {/* NEW CHECKBOX FOR "ALL PLATFORMS" */}
+                    <label className="flex items-center gap-2 text-xs sm:text-sm text-white/80 cursor-pointer mt-1">
+                      <input
+                        type="checkbox"
+                        checked={scheduleAll}
+                        onChange={(e) => setScheduleAll(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                        disabled={uiDisabled}
+                      />
+                      <span>Schedule to all connected platforms</span>
+                    </label>
 
                     <p className="text-[11px] sm:text-xs text-white/50">
                       Your post will be queued and automatically published at the selected time.
@@ -1215,6 +1264,7 @@ const PostEditor = () => {
                           setIsScheduleOpen(false);
                           setScheduleDate("");
                           setScheduleTime("");
+                          setScheduleAll(false);
                         }}
                         className="w-full sm:w-auto px-4 py-2 rounded-full text-xs sm:text-sm border border-white/20 text-gray-100 hover:bg-white/5"
                       >
@@ -1337,9 +1387,9 @@ const PostEditor = () => {
                       onClick={() => setIsAddPlatformsOpen(false)}
                       disabled={uiDisabled}
                       className={`px-3 py-1.5 text-xs rounded-full border ${uiDisabled
-                        ? "border-white/10 text_gray-500 cursor-not-allowed"
+                        ? "border-white/10 text-gray-500 cursor-not-allowed"
                         : "border-white/20 text-gray-100 hover:bg-white/5"
-                        }`.replace("text_gray", "text-gray")}
+                        }`}
                     >
                       Close
                     </button>
@@ -1462,9 +1512,14 @@ const PostEditor = () => {
         </div>
       </div>
 
-      {postToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-emerald-500/90 text-white text-sm px-4 py-2 rounded-full shadow-lg">
-          {postToast}
+      {/* UPDATED DYNAMIC TOAST (Red for Errors) */}
+      {toastState.message && (
+        <div className="fixed top-20 right-6 z-50 animate-in fade-in slide-in-from-right-5 duration-300">
+          <div className={`px-4 py-2 rounded shadow-lg text-white text-sm font-medium ${
+            toastState.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'
+          }`}>
+            {toastState.message}
+          </div>
         </div>
       )}
     </div>

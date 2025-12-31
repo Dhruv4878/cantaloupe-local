@@ -34,7 +34,7 @@ const NAV_ITEMS = [
   { name: "Generate Post", icon: Zap, href: "/generate" },
   { name: "Recent Post", icon: History, href: "/recentpost" },
   { name: "Linked Accounts", icon: Globe, href: "/connectplatform" },
-  { name: "Calendar", icon: Calendar, href: "/calender", locked: true }, 
+  { name: "Calendar", icon: Calendar, href: "/calender" }, 
   { name: "Settings", icon: Settings, href: "/setting" },
 ];
 

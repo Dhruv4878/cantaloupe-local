@@ -19,6 +19,7 @@ const profileSchema = new mongoose.Schema({
   // Step 3
   // Store uploaded logo URL
   businessLogo: { type: String },
+  primaryBrandColor: { type: String, trim: true },
 
   onboardingComplete: {
     type: Boolean,

@@ -9,7 +9,7 @@ const CallToActionSection = () => {
       className="
         relative w-full flex justify-center
         px-4 sm:px-6 lg:px-0
-        py-12 lg:py-20
+        py-12 lg:py-4
       "
     >
       {/* Outer container that matches Figma on desktop */}

@@ -18,6 +18,7 @@ const DefineBrandForm = () => {
 
   const [brandTone, setBrandTone] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
+  const [primaryBrandColor, setPrimaryBrandColor] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,6 +33,9 @@ const DefineBrandForm = () => {
       if (saved.logoUrl || saved.businessLogo) {
         setLogoUrl(saved.logoUrl || saved.businessLogo);
       }
+      if (saved.primaryBrandColor) {
+        setPrimaryBrandColor(saved.primaryBrandColor);
+      }
     } catch (_) {}
   }, []);
 
@@ -41,9 +45,9 @@ const DefineBrandForm = () => {
     );
     sessionStorage.setItem(
       "onboardingStep3",
-      JSON.stringify({ ...existing, brandTone })
+      JSON.stringify({ ...existing, brandTone, primaryBrandColor })
     );
-  }, [brandTone]);
+  }, [brandTone, primaryBrandColor]);
 
   const handleLogoUpload = async (event) => {
     const file = event.target.files[0];
@@ -131,6 +135,7 @@ const DefineBrandForm = () => {
       industry: step2Data.industry || "",
       companySize: step2Data.companySize || "",
       businessLogo: finalLogo,
+      primaryBrandColor: step3Data.primaryBrandColor || primaryBrandColor || "",
     };
 
     // Get auth token
@@ -310,6 +315,38 @@ const DefineBrandForm = () => {
               </div>
             </div>
 
+            {/* Primary Brand Color */}
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-slate-100 mb-1.5">
+                Primary Brand Color
+              </label>
+              <ColorSelect
+                id="primaryBrandColor"
+                value={primaryBrandColor}
+                onChange={(v) => setPrimaryBrandColor(v)}
+                options={[
+                  { value: "#FF6700", label: "Orange", hex: "#FF6700" },
+                  { value: "#FDEC01", label: "Yellow", hex: "#FDEC01" },
+                  { value: "#3B82F6", label: "Blue", hex: "#3B82F6" },
+                  { value: "#10B981", label: "Green", hex: "#10B981" },
+                  { value: "#8B5CF6", label: "Purple", hex: "#8B5CF6" },
+                  { value: "#EF4444", label: "Red", hex: "#EF4444" },
+                  { value: "#F59E0B", label: "Amber", hex: "#F59E0B" },
+                  { value: "#06B6D4", label: "Cyan", hex: "#06B6D4" },
+                  { value: "#EC4899", label: "Pink", hex: "#EC4899" },
+                  { value: "#6366F1", label: "Indigo", hex: "#6366F1" },
+                  { value: "#14B8A6", label: "Teal", hex: "#14B8A6" },
+                  { value: "#F97316", label: "Orange Red", hex: "#F97316" },
+                  { value: "#000000", label: "Black", hex: "#000000" },
+                  { value: "#FFFFFF", label: "White", hex: "#FFFFFF" },
+                ]}
+                placeholder="Select your primary brand color"
+              />
+              <p className="text-[11px] text-brand-gray mt-1.5">
+                Choose a primary color that represents your brand identity.
+              </p>
+            </div>
+
             {/* Brand tone */}
       
 
@@ -347,6 +384,138 @@ const DefineBrandForm = () => {
   );
 };
 
-/* BrandToneDropdown stays exactly the same — DO NOT change */
+/* ----------------- ColorSelect Component ----------------- */
+
+function ColorSelect({ id, value, onChange, options = [], placeholder = "" }) {
+  const [open, setOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
+  const btnRef = useRef(null);
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    function onDocClick(e) {
+      if (!btnRef.current) return;
+      if (btnRef.current.contains(e.target)) return;
+      if (panelRef.current && panelRef.current.contains(e.target)) return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  useEffect(() => {
+    if (open && panelRef.current) {
+      const node = panelRef.current.children[highlighted];
+      if (node) node.scrollIntoView({ block: "nearest" });
+    }
+  }, [highlighted, open]);
+
+  function toggle() {
+    setOpen((v) => !v);
+  }
+
+  function onKeyDown(e) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setHighlighted((h) => Math.min(h + 1, options.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setOpen(true);
+      setHighlighted((h) => Math.max(h - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const opt = options[highlighted];
+      if (opt) {
+        onChange(opt.value);
+        setOpen(false);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  }
+
+  const selectedOption = options.find((opt) => opt.value === value);
+
+  return (
+    <div className="relative">
+      <button
+        id={id}
+        ref={btnRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={toggle}
+        onKeyDown={onKeyDown}
+        className="appearance-none w-full text-left rounded-xl border border-white/18 px-3.5 py-2.5 pr-9 bg-black/50 text-sm sm:text-[15px] text-white shadow-sm hover:border-brand-orange/50 focus:outline-none focus:ring-2 focus:ring-brand-orange/80 transition"
+      >
+        <span className="flex items-center gap-2">
+          {selectedOption && (
+            <div
+              className="w-4 h-4 rounded border border-white/20 flex-shrink-0"
+              style={{ backgroundColor: selectedOption.hex }}
+            />
+          )}
+          <span className={value ? "text-white" : "text-slate-500 truncate"}>
+            {selectedOption ? `${selectedOption.label} (${selectedOption.hex})` : placeholder}
+          </span>
+        </span>
+        <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400">
+          <svg
+            className={
+              "w-4 h-4 transition-transform " + (open ? "rotate-180" : "")
+            }
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6 8l4 4 4-4" />
+          </svg>
+        </div>
+      </button>
+
+      {open && (
+        <ul
+          role="listbox"
+          ref={panelRef}
+          tabIndex={-1}
+          className="absolute z-40 mt-2 w-full bg-[#05040F] border border-white/15 rounded-xl shadow-xl max-h-44 overflow-auto"
+          onKeyDown={onKeyDown}
+        >
+          {options.map((opt, i) => (
+            <li
+              key={opt.value + i}
+              role="option"
+              aria-selected={value === opt.value}
+              onMouseEnter={() => setHighlighted(i)}
+              onClick={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+              className={
+                "px-3.5 py-2 text-sm cursor-pointer flex items-center gap-2 " +
+                (highlighted === i
+                  ? "bg-white/10 text-white"
+                  : "text-slate-200") +
+                (value === opt.value ? " font-semibold" : "")
+              }
+            >
+              <div
+                className="w-4 h-4 rounded border border-white/20 flex-shrink-0"
+                style={{ backgroundColor: opt.hex }}
+              />
+              <span>
+                {opt.label} ({opt.hex})
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export default DefineBrandForm;

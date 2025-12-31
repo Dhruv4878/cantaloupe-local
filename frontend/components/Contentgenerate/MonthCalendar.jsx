@@ -10,16 +10,13 @@ const MonthCalendar = ({
   currentMonth,
   onMonthChange,
   onDateClick,
-  filters // { generated, published, scheduled }
+  filters 
 }) => {
   const viewDate = dayjs(currentMonth);
   const today = dayjs();
 
-  const firstDay = viewDate.startOf("month");
-  const lastDay = viewDate.endOf("month");
-
-  const daysInMonth = lastDay.date();
-  const startWeekday = firstDay.day();
+  const daysInMonth = viewDate.daysInMonth();
+  const startWeekday = viewDate.startOf("month").day();
 
   const prevMonth = () =>
     onMonthChange(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
@@ -38,7 +35,7 @@ const MonthCalendar = ({
         <button onClick={prevMonth} className="p-2 rounded-full hover:bg-white/10 transition">
           <ChevronLeft size={18} />
         </button>
-        <h2 className="text-sm sm:text-base font-semibold tracking-wide">
+        <h2 className="text-sm sm:text-base font-semibold tracking-wide text-white">
           {viewDate.format("MMMM YYYY")}
         </h2>
         <button onClick={nextMonth} className="p-2 rounded-full hover:bg-white/10 transition">
@@ -60,32 +57,36 @@ const MonthCalendar = ({
           const data = calendarMap[dateKey] || { types: new Set(), items: [] };
           
           const isToday = today.date() === day && today.month() === viewDate.month() && today.year() === viewDate.year();
-          const hasItems = data.items.length > 0;
+          
+          // Check if any item in this day matches active filters
+          const hasVisibleItems = data.items.some(item => filters[item.type]);
 
-          // Determine which dots to show based on data AND filters
+          // Dot Logic
           const showGenerated = filters.generated && data.types.has("generated");
           const showPublished = filters.published && data.types.has("published");
           const showScheduled = filters.scheduled && data.types.has("scheduled");
+          const showFailed = filters.failed && data.types.has("failed");
 
           return (
             <div
               key={index}
-              onClick={() => hasItems && onDateClick(dateKey, data.items)}
+              onClick={() => hasVisibleItems && onDateClick(dateKey, data.items)}
               className={`
                 relative aspect-square rounded-xl
                 flex flex-col items-center justify-center
                 text-xs sm:text-sm transition
-                ${hasItems ? "cursor-pointer hover:bg-white/10" : ""}
+                ${hasVisibleItems ? "cursor-pointer hover:bg-white/10" : "opacity-50"}
                 ${isToday ? "bg-white/10 font-bold border border-white/20" : "bg-transparent text-white/90"}
               `}
             >
               <span className={isToday ? "text-white" : ""}>{day}</span>
 
-              {/* Status Dots Container */}
-              <div className="flex gap-1 mt-1 absolute bottom-2">
-                {showGenerated && <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]" />}
-                {showPublished && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />}
-                {showScheduled && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 shadow-[0_0_6px_rgba(250,204,21,0.8)]" />}
+              {/* Dots Container */}
+              <div className="flex gap-1 mt-1 absolute bottom-2 flex-wrap justify-center px-1">
+                {showGenerated && <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-sm" />}
+                {showPublished && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm" />}
+                {showScheduled && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 shadow-sm" />}
+                {showFailed && <div className="w-1.5 h-1.5 rounded-full bg-orange-500 shadow-sm" />}
               </div>
             </div>
           );

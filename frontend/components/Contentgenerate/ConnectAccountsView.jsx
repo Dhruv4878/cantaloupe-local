@@ -19,10 +19,14 @@ const GlassCard = ({ children, className = "" }) => (
     {children}
   </div>
 );
+const BUTTON_LAYOUT =
+  "w-full rounded-xl px-4 py-2.5 text-sm font-semibold flex items-center justify-center";
+
 const DisconnectButton = ({ children, className = "", ...props }) => (
   <button
     {...props}
-    className={`w-full rounded-xl px-4 py-2.5 text-sm font-semibold
+    className={`${BUTTON_LAYOUT}
+
       border border-orange-400/40
       text-orange-300
       bg-transparent
@@ -35,8 +39,6 @@ const DisconnectButton = ({ children, className = "", ...props }) => (
     {children}
   </button>
 );
-
-
 
 /* ----------------------------- Platform Config ----------------------------- */
 const PLATFORMS = [
@@ -84,7 +86,7 @@ const ConnectAccountsView = () => {
 
   const metaScopes =
     process.env.NEXT_PUBLIC_META_SCOPES ||
-    "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_posts,instagram_basic,instagram_content_publish,business_management";
+    "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,";
 
   const [connections, setConnections] = useState({
     facebook: false,
@@ -95,7 +97,7 @@ const ConnectAccountsView = () => {
 
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(null);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(null); 
 
   /* ----------------------------- Helpers ----------------------------- */
   const getToken = () => {
@@ -132,9 +134,7 @@ const ConnectAccountsView = () => {
         instagram: !!(
           social.instagram?.accessToken && social.instagram?.igBusinessId
         ),
-        linkedin: !!(
-          social.linkedin?.accessToken && social.linkedin?.memberId
-        ),
+        linkedin: !!(social.linkedin?.accessToken && social.linkedin?.memberId),
         twitter: !!(social.twitter?.accessToken && social.twitter?.userId),
       });
     } catch (e) {
@@ -157,8 +157,11 @@ const ConnectAccountsView = () => {
 
     if (params.get("connect_error")) {
       let msg = "Failed to connect Facebook.";
-      if (params.get("no_pages")) msg = "No Facebook Pages found for your account.";
-      if (params.get("no_page_token")) msg = "No valid Page Access Token found. Please ensure you grant 'Manage Pages' permissions.";
+      if (params.get("no_pages"))
+        msg = "No Facebook Pages found for your account.";
+      if (params.get("no_page_token"))
+        msg =
+          "No valid Page Access Token found. Please ensure you grant 'Manage Pages' permissions.";
 
       setError(msg);
       window.history.replaceState({}, "", window.location.pathname);
@@ -281,8 +284,9 @@ const ConnectAccountsView = () => {
                   {p.description}
                 </p>
                 <p
-                  className={`text-xs font-medium ${connected ? "text-green-400" : "text-yellow-300"
-                    }`}
+                  className={`text-xs font-medium ${
+                    connected ? "text-green-400" : "text-yellow-300"
+                  }`}
                 >
                   {statusText(p.id)}
                 </p>
@@ -298,15 +302,13 @@ const ConnectAccountsView = () => {
                 </DisconnectButton>
               ) : (
                 <GradientButton
-                  className="mt-4 w-full"
+                  className={`mt-4 ${BUTTON_LAYOUT}`}
                   disabled={working === p.id}
                   onClick={() => handleConnect(p.id)}
                 >
                   {working === p.id ? "Please wait…" : "Connect"}
                 </GradientButton>
               )}
-
-
             </GlassCard>
           );
         })}

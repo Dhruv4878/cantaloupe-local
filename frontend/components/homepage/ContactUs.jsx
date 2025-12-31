@@ -126,7 +126,7 @@ const ContactUs = () => {
       className="
         w-full
         pt-24 sm:pt-28 lg:pt-30
-        pb-16 sm:pb-24 lg:pb-32
+        pb-0 sm:pb-0 lg:pb-0
         relative overflow-hidden
       "
     >
@@ -285,11 +285,11 @@ const ContactUs = () => {
       </div>
 
       {/* Footer Under Contact Section */}
-      <div className="mt-16 sm:mt-20 pt-8 border-t border-white/10 text-center text-white/50">
-        <p className="text-[11px] sm:text-sm">
+      <div className="mt-10 sm:mt-10   text-center text-white/50">
+        {/* <p className="text-[11px] sm:text-sm">
           &copy; {new Date().getFullYear()} Generation-next. All rights reserved. | The
           power of AI, in your hands.
-        </p>
+        </p> */}
       </div>
     </section>
   );

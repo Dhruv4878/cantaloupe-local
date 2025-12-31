@@ -14,7 +14,7 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col bg-[#070616] text-white">
       <Header />
-      <main className="pt-24 sm:pt-28 flex-1">
+      <main className="pt-6 sm:pt-6 flex-1">
         <Hero />
         <KeyFeaturesSection />
         <SocialScrollBanner />

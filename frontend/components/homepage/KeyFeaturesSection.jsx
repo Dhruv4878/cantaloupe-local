@@ -35,7 +35,7 @@ const KeyFeaturesSection = () => {
       {/* Content Wrapper */}
       <div className="mx-auto w-full max-w-[1200px] px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="relative mx-auto mt-20 sm:mt-24 flex max-w-5xl flex-col items-center gap-2 text-center">
+        <div className="relative mx-auto mt-0 sm:mt-0 flex max-w-5xl flex-col items-center gap-2 text-center">
           <h2
             className="
               keyfeatures-heading
@@ -77,7 +77,7 @@ const KeyFeaturesSection = () => {
         </div>
 
         {/* Extra bottom spacing so it feels centered in viewport */}
-        <div className="h-10 sm:h-12 lg:h-16" />
+        {/* <div className="h-10 sm:h-12 lg:h-16" /> */}
       </div>
     </section>
   );

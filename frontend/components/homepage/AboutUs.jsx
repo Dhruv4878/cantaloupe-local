@@ -6,7 +6,7 @@ const AboutUs = () => {
     <section
       className="
         w-full bg-[#070616]
-        py-12 sm:py-16 lg:py-24
+        py-4 sm:py-4 lg:py-4
         px-4 sm:px-6 lg:px-0
       "
     >

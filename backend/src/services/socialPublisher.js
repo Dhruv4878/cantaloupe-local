@@ -1,309 +1,293 @@
 // backend/src/services/socialPublisher.js
 
-// ---------------------------------------------------------
-// 1. UPDATED IMPORTS (Added twitter-api-v2)
-// ---------------------------------------------------------
-const { TwitterApi } = require('twitter-api-v2'); // <--- NEW LIBRARY
-const axios = require('axios');
-const FormData = require('form-data');
-const OAuth = require('oauth-1.0a'); // Kept for legacy or other uses if needed
-const crypto = require('crypto');
-const Post = require('../models/postModel');
-const Profile = require('../models/profileModel');
+const { TwitterApi } = require("twitter-api-v2");
+const axios = require("axios");
+const FormData = require("form-data");
+const OAuth = require("oauth-1.0a");
+const crypto = require("crypto");
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v19.0';
-const LINKEDIN_UGC_POSTS_URL = 'https://api.linkedin.com/v2/ugcPosts';
+const Post = require("../models/postModel");
+const Profile = require("../models/profileModel");
 
-// Custom error for clearer responses
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v19.0";
+const LINKEDIN_UGC_POSTS_URL = "https://api.linkedin.com/v2/ugcPosts";
+
+/* ======================================================
+   Custom Error
+====================================================== */
 class SocialPublishError extends Error {
   constructor(message, statusCode = 500, details = null) {
     super(message);
-    this.name = 'SocialPublishError';
+    this.name = "SocialPublishError";
     this.statusCode = statusCode;
     this.details = details;
   }
 }
 
-// DB key mapping: backend platform -> platforms key in DB
+/* ======================================================
+   Helpers
+====================================================== */
 const platformDbKey = (backendPlatform) => {
   if (!backendPlatform) return backendPlatform;
-  if (backendPlatform === 'twitter') return 'x';
+  if (backendPlatform === "twitter") return "x";
   return backendPlatform;
 };
 
-/**
- * Strict caption builder:
- * - reads ONLY from content.platforms[dbKey].caption and hashtags
- * - never falls back to content.postContent
- * - returns { mergedCaption, imageUrl }
- */
 const buildMergedCaption = (post, backendPlatform) => {
   const content = post?.content || {};
   const dbKey = platformDbKey(backendPlatform);
-
-  // platform-specific object
   const platformData = content?.platforms?.[dbKey];
-
-  // Logging for debugging
-  console.log('[socialPublisher] buildMergedCaption - backendPlatform:', backendPlatform, 'dbKey:', dbKey);
-  // console.log('[socialPublisher] platformData:', JSON.stringify(platformData || null));
 
   if (!platformData) {
     throw new SocialPublishError(
-      `No platform-specific content found for platform '${backendPlatform}' (expected content.platforms.${dbKey})`,
+      `No platform-specific content for '${backendPlatform}'`,
       400
     );
   }
 
-  // use strict platform caption & hashtags only
-  const caption = typeof platformData.caption === 'string' ? platformData.caption.trim() : '';
+  const caption =
+    typeof platformData.caption === "string"
+      ? platformData.caption.trim()
+      : "";
 
-  const hashtagsArray = Array.isArray(platformData.hashtags) ? platformData.hashtags : [];
-
-  const hashtagsText = hashtagsArray
-    .map((h) => {
-      if (!h) return null;
-      const cleaned = String(h).trim().replace(/\s+/g, '');
-      if (!cleaned) return null;
-      return cleaned.startsWith('#') ? cleaned : `#${cleaned.replace(/^#+/, '')}`;
-    })
-    .filter(Boolean)
-    .join(' ');
+  const hashtagsText = Array.isArray(platformData.hashtags)
+    ? platformData.hashtags
+        .map((h) =>
+          h
+            ? `#${String(h).replace(/^#+/, "").replace(/\s+/g, "")}`
+            : null
+        )
+        .filter(Boolean)
+        .join(" ")
+    : "";
 
   const mergedCaption = `${caption} ${hashtagsText}`.trim();
-
-  // prefer platform-specific imageUrl, else generic imageUrl if present
   const imageUrl = platformData.imageUrl || content.imageUrl || null;
 
   return { mergedCaption, imageUrl };
 };
 
-// Check profile social connections
 const ensureProfileForPlatform = (profile, platform) => {
-  if (!profile) throw new SocialPublishError('Profile not found', 404);
+  if (!profile) throw new SocialPublishError("Profile not found", 404);
   const social = profile.social || {};
 
-  if (platform === 'facebook') {
-    const pageId = social.facebook?.pageId;
-    const accessToken = social.facebook?.accessToken;
-    if (!pageId || !accessToken) throw new SocialPublishError('Facebook not connected', 400);
-    return { pageId, accessToken };
-  }
-
-  if (platform === 'instagram') {
-    const igBusinessId = social.instagram?.igBusinessId;
-    const accessToken = social.instagram?.accessToken;
-    if (!igBusinessId || !accessToken) throw new SocialPublishError('Instagram not connected', 400);
-    return { igBusinessId, accessToken };
-  }
-
-  if (platform === 'linkedin') {
-    const memberId = social.linkedin?.memberId;
-    const accessToken = social.linkedin?.accessToken;
-    if (!memberId || !accessToken) throw new SocialPublishError('LinkedIn not connected', 400);
-    return { memberId, accessToken };
-  }
-
-  // ---------------------------------------------------------
-  // 2. UPDATED TWITTER CHECK (OAuth 2.0)
-  // ---------------------------------------------------------
-  if (platform === 'twitter') {
-    // We strictly look for the REFRESH TOKEN now
-    const refreshToken = social.twitter?.refreshToken;
-
-    if (!refreshToken) {
-      throw new SocialPublishError(
-        'Twitter not connected via OAuth 2.0 (Missing refresh token). Please reconnect X.',
-        400
-      );
+  if (platform === "facebook") {
+    if (!social.facebook?.pageId || !social.facebook?.accessToken) {
+      throw new SocialPublishError("Facebook not connected", 400);
     }
-    // Return only what we need for the new flow
-    return { refreshToken };
+    return social.facebook;
   }
 
-  throw new SocialPublishError('Unsupported platform', 400);
+  if (platform === "instagram") {
+    if (!social.instagram?.igBusinessId || !social.instagram?.accessToken) {
+      throw new SocialPublishError("Instagram not connected", 400);
+    }
+    return social.instagram;
+  }
+
+  if (platform === "linkedin") {
+    if (!social.linkedin?.memberId || !social.linkedin?.accessToken) {
+      throw new SocialPublishError("LinkedIn not connected", 400);
+    }
+    return social.linkedin;
+  }
+
+  if (platform === "twitter") {
+    if (!social.twitter?.refreshToken) {
+      throw new SocialPublishError("Twitter not connected", 400);
+    }
+    return social.twitter;
+  }
+
+  throw new SocialPublishError("Unsupported platform", 400);
 };
 
-// Post to external platform
-const publishToPlatform = async ({ post, profile, platform }) => {
-  if (!post || !platform) throw new SocialPublishError('post and platform required', 400);
+/* ======================================================
+   🔥 LIFECYCLE HELPERS
+====================================================== */
+const markScheduleEntryPosted = async (postId, platform) => {
+  const post = await Post.findById(postId);
+  if (!post) return;
 
-  // platform should be 'twitter' | 'facebook' | 'instagram' | 'linkedin'
-  const normalized = platform;
-  // Build caption strictly from platform-specific content
-  const { mergedCaption, imageUrl } = buildMergedCaption(post, normalized);
+  // Try to find an entry in either top-level schedule or content.schedule
+  let entry = post.schedule?.entries?.find((e) => e.platform === platform);
+  let mode = 'direct';
 
-  // If platform demands caption, enforce it
-  if ((normalized === 'twitter' || normalized === 'linkedin') && !mergedCaption) {
-    throw new SocialPublishError(`${normalized} requires a platform-specific caption`, 400);
+  if (entry) {
+    entry.status = "posted";
+    entry.postedAt = new Date();
+    mode = 'scheduled';
+  } else if (post.content?.schedule?.entries) {
+    entry = post.content.schedule.entries.find((e) => e.platform === platform);
+    if (entry) {
+      // Update the content.schedule entry copy (best-effort)
+      entry.status = 'posted';
+      entry.postedAt = new Date();
+      mode = 'scheduled';
+    }
   }
 
+  await post.save();
+
+  // If there was no schedule entry, treat this as a direct publish
+  await Post.updateLifecycleOnPublish(post._id, platform, mode);
+};
+
+const markScheduleEntryFailed = async (postId, platform, error, mode = 'scheduled') => {
+  const post = await Post.findById(postId);
+  if (!post) return;
+
+  // Update schedule entry if present
+  const entry = post.schedule?.entries?.find((e) => e.platform === platform);
+
+  if (entry) {
+    entry.status = "failed";
+    entry.error = error?.message || "Publish failed";
+    entry.lastAttemptAt = new Date();
+  }
+
+  // Update lifecycle.schedule.failedPlatforms if schedule exists
+  if (post.lifecycle?.schedule) {
+    post.lifecycle.schedule.failedPlatforms = post.lifecycle.schedule.failedPlatforms || [];
+    if (!post.lifecycle.schedule.failedPlatforms.includes(platform)) {
+      post.lifecycle.schedule.failedPlatforms.push(platform);
+    }
+  }
+
+  // Also update publish-level failure summary so UI can show publish failures
+  await Post.updateLifecycleOnPublishFailure(post._id, platform, mode, error?.message || null);
+
+  await post.save();
+};
+
+/* ======================================================
+   Publish to Platform
+====================================================== */
+const publishToPlatform = async ({ post, profile, platform }) => {
+  const normalized = platform;
+  const { mergedCaption, imageUrl } = buildMergedCaption(
+    post,
+    normalized
+  );
   const creds = ensureProfileForPlatform(profile, normalized);
 
-  // ---- Facebook (page photo upload) ----
-  if (normalized === 'facebook') {
-    const fbUrl = `https://graph.facebook.com/${META_GRAPH_VERSION}/${creds.pageId}/photos`;
-    const fbParams = new URLSearchParams();
-    if (imageUrl) fbParams.append('url', imageUrl);
-    if (mergedCaption) fbParams.append('caption', mergedCaption);
-    fbParams.append('access_token', creds.accessToken);
+  try {
+    /* ---------------- FACEBOOK ---------------- */
+    if (normalized === "facebook") {
+      const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${creds.pageId}/photos`;
+      const params = new URLSearchParams({
+        url: imageUrl,
+        caption: mergedCaption,
+        access_token: creds.accessToken,
+      });
 
-    const fbResp = await axios.post(fbUrl, fbParams, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    });
-    return { success: true, platform: 'facebook', response: fbResp.data };
-  }
+      await axios.post(url, params);
+      await markScheduleEntryPosted(post._id, "facebook");
+      return { success: true, platform: "facebook" };
+    }
 
-  // ---- Instagram (FB graph flow) ----
-  if (normalized === 'instagram') {
-    const containerUrl = `https://graph.facebook.com/${META_GRAPH_VERSION}/${creds.igBusinessId}/media`;
-    const containerParams = new URLSearchParams();
-    if (imageUrl) containerParams.append('image_url', imageUrl);
-    if (mergedCaption) containerParams.append('caption', mergedCaption);
-    containerParams.append('access_token', creds.accessToken);
+    /* ---------------- INSTAGRAM ---------------- */
+    if (normalized === "instagram") {
+      const containerUrl = `https://graph.facebook.com/${META_GRAPH_VERSION}/${creds.igBusinessId}/media`;
+      const containerResp = await axios.post(
+        containerUrl,
+        new URLSearchParams({
+          image_url: imageUrl,
+          caption: mergedCaption,
+          access_token: creds.accessToken,
+        })
+      );
 
-    const containerResp = await axios.post(containerUrl, containerParams, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    });
-    const containerId = containerResp.data?.id;
-    if (!containerId) throw new SocialPublishError('Failed creating Instagram container', 500, containerResp.data);
+      const publishUrl = `https://graph.facebook.com/${META_GRAPH_VERSION}/${creds.igBusinessId}/media_publish`;
+      await axios.post(
+        publishUrl,
+        new URLSearchParams({
+          creation_id: containerResp.data.id,
+          access_token: creds.accessToken,
+        })
+      );
 
-    const publishUrl = `https://graph.facebook.com/${META_GRAPH_VERSION}/${creds.igBusinessId}/media_publish`;
-    const publishParams = new URLSearchParams();
-    publishParams.append('creation_id', containerId);
-    publishParams.append('access_token', creds.accessToken);
-    const publishResp = await axios.post(publishUrl, publishParams, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    });
-    return { success: true, platform: 'instagram', response: publishResp.data };
-  }
+      await markScheduleEntryPosted(post._id, "instagram");
+      return { success: true, platform: "instagram" };
+    }
 
-  // ---- LinkedIn ----
-  if (normalized === 'linkedin') {
-    let shareMediaCategory = 'NONE';
-    let mediaArray;
-    if (imageUrl) {
-      try {
-        const registerBody = {
-          registerUploadRequest: {
-            recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
-            owner: `urn:li:person:${creds.memberId}`,
-            serviceRelationships: [{ relationshipType: 'OWNER', identifier: 'urn:li:userGeneratedContent' }],
+    /* ---------------- LINKEDIN ---------------- */
+    if (normalized === "linkedin") {
+      await axios.post(
+        LINKEDIN_UGC_POSTS_URL,
+        {
+          author: `urn:li:person:${creds.memberId}`,
+          lifecycleState: "PUBLISHED",
+          specificContent: {
+            "com.linkedin.ugc.ShareContent": {
+              shareCommentary: { text: mergedCaption },
+              shareMediaCategory: "NONE",
+            },
           },
-        };
-        const registerResp = await axios.post('https://api.linkedin.com/v2/assets?action=registerUpload', registerBody, {
-          headers: { Authorization: `Bearer ${creds.accessToken}`, 'Content-Type': 'application/json', 'X-Restli-Protocol-Version': '2.0.0' },
-        });
-        const uploadMechanism = registerResp.data?.value?.uploadMechanism?.['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'];
-        const uploadUrl = uploadMechanism?.uploadUrl;
-        const assetUrn = registerResp.data?.value?.asset;
-        if (uploadUrl && assetUrn) {
-          const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-          const contentType = imgResp.headers['content-type'] || 'image/jpeg';
-          await axios.put(uploadUrl, imgResp.data, { headers: { 'Content-Type': contentType }, maxBodyLength: Infinity, maxContentLength: Infinity });
-          shareMediaCategory = 'IMAGE';
-          mediaArray = [{ status: 'READY', media: assetUrn }];
-        }
-      } catch (err) {
-        console.error('LinkedIn image upload failed; continuing text-only post:', err?.response?.data || err.message);
-      }
-    }
-
-    const ugcPost = {
-      author: `urn:li:person:${creds.memberId}`,
-      lifecycleState: 'PUBLISHED',
-      specificContent: {
-        'com.linkedin.ugc.ShareContent': {
-          shareCommentary: { text: mergedCaption },
-          shareMediaCategory,
-          ...(mediaArray ? { media: mediaArray } : {}),
+          visibility: {
+            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
+          },
         },
-      },
-      visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
-    };
+        {
+          headers: {
+            Authorization: `Bearer ${creds.accessToken}`,
+            "X-Restli-Protocol-Version": "2.0.0",
+          },
+        }
+      );
 
-    const linkedinResp = await axios.post(LINKEDIN_UGC_POSTS_URL, ugcPost, {
-      headers: { Authorization: `Bearer ${creds.accessToken}`, 'X-Restli-Protocol-Version': '2.0.0', 'Content-Type': 'application/json' },
-    });
-    return { success: true, platform: 'linkedin', response: linkedinResp.data };
-  }
-
-  // ---------------------------------------------------------
-  // 3. UPDATED TWITTER (X) LOGIC - OAUTH 2.0 + REFRESH
-  // ---------------------------------------------------------
-  if (normalized === 'twitter') {
-    console.log('[socialPublisher] Starting Twitter OAuth 2.0 publish flow');
-
-    // Setup the Client with Client ID (Not Consumer Key)
-    const client = new TwitterApi({
-      clientId: process.env.TWITTER_CLIENT_ID,
-      clientSecret: process.env.TWITTER_CLIENT_SECRET,
-    });
-
-    try {
-      // A. REFRESH THE TOKEN
-      // We use the refresh token from DB to get a new Access Token
-      const { client: refreshedClient, accessToken, refreshToken: newRefreshToken } = 
-        await client.refreshOAuth2Token(creds.refreshToken);
-
-      // B. UPDATE DB WITH NEW TOKEN (CRITICAL)
-      // This ensures the next post works. We update the 'profile' object directly.
-      if (profile && profile.social && profile.social.twitter) {
-        profile.social.twitter.accessToken = accessToken;
-        profile.social.twitter.refreshToken = newRefreshToken;
-        await profile.save(); 
-        console.log('[socialPublisher] Twitter tokens refreshed and saved.');
-      }
-
-      // C. MEDIA UPLOAD (Optional, try/catch block)
-      // let mediaId = null;
-      // if (imageUrl) {
-      //   try {
-      //     const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-      //     const buffer = Buffer.from(imgResp.data);
-      //     const contentType = imgResp.headers['content-type'] || 'image/jpeg';
-          
-      //     // Use the refreshed client to upload media (v1.1 wrapped)
-      //     mediaId = await refreshedClient.v1.uploadMedia(buffer, { mimeType: contentType });
-      //     console.log('[socialPublisher] Media uploaded, ID:', mediaId);
-      //   } catch (mediaError) {
-      //     console.error('[socialPublisher] Media upload warning:', mediaError.message);
-      //     // We continue to post text-only if media fails
-      //   }
-      // }
-
-      // D. POST THE TWEET (v2 Endpoint)
-      const tweetPayload = { text: mergedCaption };
-      // if (mediaId) {
-      //   tweetPayload.media = { media_ids: [mediaId] };
-      // }
-
-      const tweetResponse = await refreshedClient.v2.tweet(tweetPayload);
-      
-      return { success: true, platform: 'twitter', response: tweetResponse.data };
-
-    } catch (err) {
-      // Detailed error logging
-      console.error('[socialPublisher] Twitter OAuth 2.0 Error:', err);
-      const details = err.data || err.message;
-      throw new SocialPublishError('Twitter publish failed', 500, details);
+      await markScheduleEntryPosted(post._id, "linkedin");
+      return { success: true, platform: "linkedin" };
     }
-  }
 
-  throw new SocialPublishError('Unsupported platform', 400);
+    /* ---------------- TWITTER (X) ---------------- */
+    if (normalized === "twitter") {
+      const client = new TwitterApi({
+        clientId: process.env.TWITTER_CLIENT_ID,
+        clientSecret: process.env.TWITTER_CLIENT_SECRET,
+      });
+
+      const {
+        client: refreshedClient,
+        accessToken,
+        refreshToken,
+      } = await client.refreshOAuth2Token(creds.refreshToken);
+
+      profile.social.twitter.accessToken = accessToken;
+      profile.social.twitter.refreshToken = refreshToken;
+      await profile.save();
+
+      await refreshedClient.v2.tweet({ text: mergedCaption });
+
+      await markScheduleEntryPosted(post._id, "twitter");
+      return { success: true, platform: "twitter" };
+    }
+
+    throw new SocialPublishError("Unsupported platform", 400);
+  } catch (err) {
+    // Determine whether this was for a scheduled entry or a direct publish
+    const mode = post.schedule?.entries?.some((e) => e.platform === platform)
+      ? 'scheduled'
+      : 'direct';
+
+    await markScheduleEntryFailed(post._id, platform, err, mode);
+    throw err;
+  }
 };
 
+/* ======================================================
+   Public API
+====================================================== */
 const publishPostById = async ({ userId, postId, platform }) => {
-  if (!userId || !postId || !platform) {
-    throw new SocialPublishError('userId, postId and platform required', 400);
-  }
-
   const post = await Post.findOne({ _id: postId, userId });
-  if (!post) throw new SocialPublishError('Post not found', 404);
+  if (!post) throw new SocialPublishError("Post not found", 404);
 
   const profile = await Profile.findOne({ user: userId });
-  const result = await publishToPlatform({ post, profile, platform });
-  return result;
+  return publishToPlatform({ post, profile, platform });
 };
 
-module.exports = { publishPostById, publishToPlatform, SocialPublishError };
+module.exports = {
+  publishPostById,
+  publishToPlatform,
+  SocialPublishError,
+};

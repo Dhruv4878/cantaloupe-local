@@ -59,25 +59,21 @@ router.get('/posts/calendar', authMiddleware, async (req, res) => {
     const fromDate = new Date(from);
     const toDate = new Date(to);
 
-    // 1. Fetch safely (Ensure 'content' is selected here!)
+    // FIX: Added 'lifecycle' to the .select() string
     const posts = await Post.find({ userId: req.user.id })
-      .select('createdAt schedule content') 
+      .select('createdAt schedule content lifecycle') 
       .lean();
 
-    // 2. Filter in JS (SAFE)
+    // Logic to filter by date range
     const calendarPosts = posts.filter((post) => {
       let include = false;
 
-      // Created date
-      if (
-        post.createdAt &&
-        post.createdAt >= fromDate &&
-        post.createdAt <= toDate
-      ) {
+      // 1. Created Date
+      if (post.createdAt && post.createdAt >= fromDate && post.createdAt <= toDate) {
         include = true;
       }
 
-      // Scheduled entries
+      // 2. Scheduled Date
       if (post.schedule?.entries && Array.isArray(post.schedule.entries)) {
         for (const entry of post.schedule.entries) {
           if (
@@ -89,6 +85,15 @@ router.get('/posts/calendar', authMiddleware, async (req, res) => {
             break;
           }
         }
+      }
+
+      // 3. Direct Publish/Fail Date (Lifecycle)
+      if (!include && post.lifecycle?.publish) {
+         const pubDate = post.lifecycle.publish.publishedAt || post.lifecycle.publish.lastFailedAt;
+         if (pubDate) {
+             const pDate = new Date(pubDate);
+             if (pDate >= fromDate && pDate <= toDate) include = true;
+         }
       }
 
       return include;

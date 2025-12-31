@@ -36,6 +36,7 @@ exports.createOrUpdateProfile = async (req, res) => {
     companySize,
     businessLogo: bodyBusinessLogo,
     logoUrl: bodyLogoUrl,
+    primaryBrandColor,
   } = req.body || {};
 
   // Consolidate logo field and log inputs
@@ -62,12 +63,12 @@ exports.createOrUpdateProfile = async (req, res) => {
     industry,
     companySize,
     businessLogo,
+    primaryBrandColor,
     onboardingComplete: true,
   };
 
   // Remove legacy fields from old 5-step flow so new profiles stay clean
   const legacyFieldsToUnset = {
-    primaryBrandColor: "",
     secondaryBrandColor: "",
     brandTone: "",
     targetAudience: "",
