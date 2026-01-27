@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Send,
   TrendingUp,
@@ -15,9 +15,11 @@ import {
   Sparkles, // Added for the new input bar
 } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import GradientButton from "../GradientButton";
 
 const PRIMARY_ORANGE = "#FF8C00";
+const POST_LIMIT = 10;
 
 const GlassCard = ({ children, className = "" }) => (
   <div
@@ -32,7 +34,6 @@ const GlassCard = ({ children, className = "" }) => (
     {children}
   </div>
 );
-
 
 const LineGraph = ({ data, color, label, maxValue }) => {
   const maxVal = maxValue || Math.max(...data.map((d) => d.value));
@@ -107,7 +108,16 @@ const mockData = {
     "Content mentioning 'product launch' on Instagram saw 20% higher engagement last month. Focus on visual content this week.",
 };
 
-const DashboardView = () => {
+const DashboardView = ({ onPostCountUpdate }) => {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    const token = sessionStorage.getItem("authToken");
+    if (!token) {
+      window.location.replace("/login");
+    }
+  }, []);
+
   const dashboardData = mockData;
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api",
@@ -117,14 +127,22 @@ const DashboardView = () => {
 
   const [platforms, setPlatforms] = useState(mockData.connectedPlatforms);
   const [loadingPlatforms, setLoadingPlatforms] = useState(true);
-  const [totalPosts, setTotalPosts] = useState(mockData.totalPosts);
+  const [postStats, setPostStats] = useState({
+    lifetime: 0,
+    monthlyOverall: 0,
+    currentPlan: { used: 0, limit: 0, hasLimit: false, planName: 'Free' }
+  });
   const [loadingCounts, setLoadingCounts] = useState(true);
 
-  const requireToken = () => {
+  // Calculate limit reached based on current plan usage
+  const isLimitReached = postStats.currentPlan.hasLimit && 
+    postStats.currentPlan.used >= postStats.currentPlan.limit;
+
+  const requireToken = useCallback(() => {
     if (typeof window === "undefined") return null;
     const token = window.sessionStorage.getItem("authToken");
-    return token || null;
-  };
+    return token && token !== "null" ? token : null;
+  }, []);
 
   useEffect(() => {
     const mapStatus = (social) =>
@@ -137,7 +155,8 @@ const DashboardView = () => {
           explicitStatus = social?.facebook?.status;
         } else if (p.id === "instagram") {
           isConnected =
-            !!social?.instagram?.accessToken && !!social?.instagram?.igBusinessId;
+            !!social?.instagram?.accessToken &&
+            !!social?.instagram?.igBusinessId;
           explicitStatus = social?.instagram?.status;
         } else if (p.id === "linkedin") {
           isConnected =
@@ -176,16 +195,25 @@ const DashboardView = () => {
         });
 
         if (!res.ok) {
+          // Handle 401/403 - token invalid
+          if (res.status === 401 || res.status === 403) {
+            console.error("Unauthorized - token may be invalid");
+            setPlatforms(mockData.connectedPlatforms);
+            return;
+          }
+          // Handle 404 or other errors - use empty profile
           if (res.status === 404) {
             setPlatforms(mapStatus({}));
             return;
           }
-          throw new Error("Failed to load platform status");
+          // For other errors, use mock data and log
+          console.error("Failed to load platform status:", res.status);
+          setPlatforms(mockData.connectedPlatforms);
+          return;
         }
         const profileData = await res.json();
         setProfile(profileData);
         setPlatforms(mapStatus(profileData?.social || {}));
-        
       } catch (e) {
         console.error("Fetch error:", e);
         setPlatforms(mockData.connectedPlatforms);
@@ -196,43 +224,175 @@ const DashboardView = () => {
 
     fetchPlatforms();
   }, [apiUrl]);
-  useEffect(() => {
-    const fetchPostCount = async () => {
-      try {
-        setLoadingCounts(true);
-  
-        const token = requireToken();
-        if (!token) {
-          setTotalPosts(0);
+  // Fetch post stats function - can be called manually or on mount
+  const fetchPostStats = useCallback(async () => {
+    try {
+      setLoadingCounts(true);
+
+      const token = requireToken();
+      if (!token) {
+        const defaultStats = {
+          lifetime: 0,
+          monthlyOverall: 0,
+          currentPlan: { used: 0, limit: 0, hasLimit: false, planName: 'Free' }
+        };
+        setPostStats(defaultStats);
+        if (typeof onPostCountUpdate === "function") {
+          onPostCountUpdate(0);
+        }
+        return;
+      }
+
+      const res = await fetch(`${apiUrl}/posts/stats`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        // Handle 401/403 - token invalid
+        if (res.status === 401 || res.status === 403) {
+          console.error("Unauthorized - token may be invalid");
+          const defaultStats = {
+            lifetime: 0,
+            monthlyOverall: 0,
+            currentPlan: { used: 0, limit: 0, hasLimit: false, planName: 'Free' }
+          };
+          setPostStats(defaultStats);
+          if (typeof onPostCountUpdate === "function") {
+            onPostCountUpdate(0);
+          }
           return;
         }
-  
-        const res = await fetch(`${apiUrl}/posts/count`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-  
-        if (!res.ok) {
-          throw new Error("Failed to fetch post count");
+        // For other errors, just set stats to 0 and log
+        console.error("Failed to fetch post stats:", res.status);
+        const defaultStats = {
+          lifetime: 0,
+          monthlyOverall: 0,
+          currentPlan: { used: 0, limit: 0, hasLimit: false, planName: 'Free' }
+        };
+        setPostStats(defaultStats);
+        if (typeof onPostCountUpdate === "function") {
+          onPostCountUpdate(0);
         }
-  
-        const data = await res.json();
-        setTotalPosts(data.count ?? 0);
-      } catch (err) {
-        console.error("Post count error:", err);
-        setTotalPosts(0);
-      } finally {
-        setLoadingCounts(false);
+        return;
+      }
+
+      const data = await res.json();
+      setPostStats(data);
+      // Update parent component with the lifetime count for backward compatibility
+      if (typeof onPostCountUpdate === "function") {
+        onPostCountUpdate(data.lifetime ?? 0);
+      }
+    } catch (err) {
+      console.error("Post stats error:", err);
+      const defaultStats = {
+        lifetime: 0,
+        monthlyOverall: 0,
+        currentPlan: { used: 0, limit: 0, hasLimit: false, planName: 'Free' }
+      };
+      setPostStats(defaultStats);
+      if (typeof onPostCountUpdate === "function") {
+        onPostCountUpdate(0);
+      }
+    } finally {
+      setLoadingCounts(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiUrl, requireToken]);
+
+  // Fetch post stats on mount and when API URL changes
+  useEffect(() => {
+    fetchPostStats();
+  }, [fetchPostStats]);
+
+  // Refresh post stats when navigating to dashboard route
+  useEffect(() => {
+    if (pathname === "/dashboard") {
+      fetchPostStats();
+    }
+  }, [pathname, fetchPostStats]);
+
+  // Also update parent when postStats changes (backup mechanism)
+  useEffect(() => {
+    if (typeof onPostCountUpdate === "function") {
+      onPostCountUpdate(postStats.lifetime);
+    }
+  }, [postStats.lifetime, onPostCountUpdate]);
+
+  // Refresh post stats when page becomes visible (user returns to tab)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchPostStats();
       }
     };
-  
-    fetchPostCount();
-  }, [apiUrl]);
-  
 
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [fetchPostStats]);
 
-  
+  const EnhancedPostsStatBlock = ({ postStats, loading, icon: Icon, color }) => (
+    <GlassCard className="flex flex-col justify-between h-full min-h-[160px]">
+      <div className="flex items-start justify-between w-full gap-3">
+        <p className="text-xs sm:text-sm text-gray-400 max-w-[70%] break-words">
+          Total Posts Generated
+        </p>
+        <div
+          className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 flex-shrink-0"
+          style={{ color }}
+        >
+          <Icon size={18} className="sm:w-5 sm:h-5" />
+        </div>
+      </div>
+      
+      {/* Main lifetime count */}
+      <h3 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white leading-tight mt-3">
+        {loading ? "—" : postStats.lifetime.toLocaleString()}
+      </h3>
+      
+      {/* Three metrics breakdown */}
+      <div className="mt-4 space-y-2">
+        {/* Monthly Overall */}
+        <div className="flex justify-between items-center text-xs">
+          <span className="text-gray-400">This Month:</span>
+          <span className="text-white font-medium">
+            {loading ? "—" : postStats.monthlyOverall}
+          </span>
+        </div>
+        
+        {/* Current Plan Usage */}
+        <div className="flex justify-between items-center text-xs">
+          <span className="text-gray-400">Current Plan:</span>
+          <span className="text-white font-medium">
+            {loading ? "—" : postStats.currentPlan.hasLimit 
+              ? `${postStats.currentPlan.used}/${postStats.currentPlan.limit}`
+              : postStats.currentPlan.planName === 'Free' ? 'No Limit' : '—'
+            }
+          </span>
+        </div>
+        
+        {/* Progress bar for current plan (if has limit) */}
+        {!loading && postStats.currentPlan.hasLimit && (
+          <div className="w-full bg-white/10 rounded-full h-1.5 mt-2">
+            <div 
+              className="h-1.5 rounded-full transition-all duration-300"
+              style={{
+                width: `${Math.min((postStats.currentPlan.used / Math.max(postStats.currentPlan.limit, 1)) * 100, 100)}%`,
+                backgroundColor: postStats.currentPlan.used >= postStats.currentPlan.limit ? '#ef4444' : color
+              }}
+            />
+          </div>
+        )}
+      </div>
+      
+      <p className="text-[11px] sm:text-xs text-gray-500 mt-auto pt-3">
+        All-time count from AI
+      </p>
+    </GlassCard>
+  );
 
   const StatBlock = ({ title, value, icon: Icon, color, subtitle }) => (
     <GlassCard className="flex flex-col justify-between h-full min-h-[120px]">
@@ -307,18 +467,11 @@ const DashboardView = () => {
       {/* Quick Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 lg:mb-8">
         <Link href="/recentpost" style={{ textDecoration: "none" }}>
-          <StatBlock
-            title="Total Posts Generated"
-            value={
-              loadingCounts
-                ? "—"
-                : Number.isFinite(totalPosts)
-                ? totalPosts.toLocaleString()
-                : dashboardData.totalPosts.toLocaleString()
-            }
+          <EnhancedPostsStatBlock
+            postStats={postStats}
+            loading={loadingCounts}
             icon={Send}
             color={PRIMARY_ORANGE}
-            subtitle="All-time count from AI"
           />
         </Link>
         <StatBlock
@@ -346,43 +499,34 @@ const DashboardView = () => {
 
       {/* NEW: Create Content Placeholder Bar */}
       <div className="mb-6 lg:mb-8">
-        <Link href="/generate">
+        <Link
+          href={isLimitReached ? "#" : "/generate"}
+          className={isLimitReached ? "pointer-events-none opacity-50" : ""}
+        >
           <GlassCard className="flex items-center py-4 px-5 gap-4 cursor-pointer group hover:bg-white/5 transition-all duration-300 border border-white/10 hover:border-orange-500/30">
-            
             {/* 1. Avatar Icon (Left) */}
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-orange-400/20 to-pink-500/20 border border-white/10 flex items-center justify-center flex-shrink-0">
-  {profile?.businessLogo ? (
-    <img
-      src={profile.businessLogo}
-      alt="Business Logo"
-      className="w-full h-full object-cover"
-    />
-  ) : (
-    <Sparkles size={20} className="text-orange-400" />
-  )}
-</div>
-
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-orange-400/20 to-pink-500/20 border border-white/10 flex items-center justify-center flex-shrink-0 p-1.5">
+              <Sparkles size={20} className="text-orange-400" />
+            </div>
 
             {/* 2. The "Input Pill" Container (Middle) */}
             {/* This div creates the 'placeholder' background behind the text */}
             <div className="flex-grow h-11 bg-white/5 border border-white/5 rounded-full flex items-center px-5 group-hover:bg-white/10 transition-all duration-300">
-               <span className="text-gray-400 text-sm font-medium group-hover:text-gray-200 transition-colors truncate">
-                  Let's create something for your business...
-               </span>
+              <span className="text-gray-400 text-sm font-medium group-hover:text-gray-200 transition-colors truncate">
+                Let's create something for your business...
+              </span>
             </div>
 
             {/* 3. Action Button (Right) */}
             <div className="flex-shrink-0 w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-500 group-hover:bg-orange-500 group-hover:text-white group-hover:shadow-lg transition-all duration-300">
               <ArrowRight size={20} />
             </div>
-
           </GlassCard>
         </Link>
       </div>
 
       {/* Main Graphs and Lists Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        
         {/* Engagement Graph */}
         <div className="lg:col-span-2 min-w-0">
           {/* CHANGED: h-auto -> h-full to stretch height */}

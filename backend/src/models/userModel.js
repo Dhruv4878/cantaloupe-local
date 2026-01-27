@@ -26,6 +26,23 @@ const userSchema = new mongoose.Schema({
     googleId: {
         type: String,
         sparse: true // Allows multiple null values but unique non-null values
+    },
+    // Active flag: true by default. When false, the user is suspended and cannot login.
+    active: {
+        type: Boolean,
+        default: true
+    },
+
+    // Per-user post credit limit (free tier default 0)
+    creditLimit: {
+        type: Number,
+        default: 0
+    },
+
+    // Track last successful login time for active user calculations
+    lastLogin: {
+        type: Date,
+        default: null
     }
     // Note: We do NOT store the "Confirm Password" field.
     // Its only purpose is to be checked on the frontend to ensure the user typed correctly.

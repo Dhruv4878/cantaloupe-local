@@ -43,6 +43,17 @@ const OrangeButton = ({
 
 export default function Generatedpost() {
   const router = useRouter();
+  const POST_LIMIT = 10;
+
+  const canNavigateToGenerate = () => {
+    try {
+      if (typeof window === "undefined") return true;
+      const used = parseInt(sessionStorage.getItem("usedPosts") || "0", 10) || 0;
+      return used < POST_LIMIT;
+    } catch (_) {
+      return true;
+    }
+  };
 
   const [businessName, setBusinessName] = useState("");
   const [items, setItems] = useState([]);
@@ -171,7 +182,10 @@ export default function Generatedpost() {
     })();
   }, []);
 
-  const goToGenerate = () => router.push("/generate");
+  const goToGenerate = () => {
+    if (!canNavigateToGenerate()) return;
+    router.push("/generate");
+  };
 
   return (
     <div className="text-white">

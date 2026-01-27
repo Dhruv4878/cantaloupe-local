@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation"; // 1. Import useRouter
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Zap,
@@ -13,7 +13,10 @@ import {
   X,
   History,
   Lock,
+  CreditCard,
 } from "lucide-react";
+import { useFeatureAccess } from "../../hooks/useFeatureAccess";
+import UpgradeModal from "../UpgradeModal";
 
 const GlassCard = ({ children, className = "" }) => (
   <div
@@ -34,13 +37,19 @@ const NAV_ITEMS = [
   { name: "Generate Post", icon: Zap, href: "/generate" },
   { name: "Recent Post", icon: History, href: "/recentpost" },
   { name: "Linked Accounts", icon: Globe, href: "/connectplatform" },
-  { name: "Calendar", icon: Calendar, href: "/calender" }, 
+  { name: "Calendar", icon: Calendar, href: "/calender" },
+  { name: "Billing & Subscription", icon: CreditCard, href: "/billing" },
   { name: "Settings", icon: Settings, href: "/setting" },
 ];
 
-const Sidebar = ({ isOpen, toggleSidebar }) => {
+const Sidebar = ({ isOpen, toggleSidebar, usedPosts = 0 }) => {
   const pathname = usePathname();
-  const router = useRouter(); // 2. Initialize router
+  const router = useRouter();
+  const { isFeatureAvailable, getPlanName, loading } = useFeatureAccess();
+  
+  // State for upgrade modal
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeFeature, setUpgradeFeature] = useState({ name: '', description: '' });
 
   const isActive = (href) =>
     pathname === href || pathname.startsWith(href + "/");
@@ -48,16 +57,30 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
   const handleSignOut = () => {
     sessionStorage.clear();
     // You might also want to clear localStorage or cookies if used
-    // localStorage.clear(); 
-    router.push("/login"); 
+    // localStorage.clear();
+    router.push("/login");
   };
+
+  // Read creditLimit safely on client to avoid SSR errors
+  const [creditLimit, setCreditLimit] = useState(10);
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const v = Number(sessionStorage.getItem("creditLimit") || "0");
+        setCreditLimit(Number.isFinite(v) ? v : 10);
+      }
+    } catch (_) {}
+  }, []);
+
+  const safeUsed = Math.min(usedPosts, creditLimit);
+  const isLimitReached = safeUsed >= creditLimit;
 
   const NavItem = ({ item }) => {
     const active = isActive(item.href);
 
     if (item.locked) {
       return (
-        <div className="block cursor-not-allowed opacity-60">
+        <div className="block cursor-not-allowed">
           <div className="flex items-center justify-between px-3 py-2.5 rounded-xl mb-1.5 text-gray-500 bg-transparent">
             <div className="flex items-center">
               <item.icon size={20} className="mr-3 flex-shrink-0" />
@@ -71,12 +94,61 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       );
     }
 
+    // Check for Calendar feature access
+    if (item.href === "/calender") {
+      const hasCalendarAccess = !loading && isFeatureAvailable('content_calendar');
+      
+      if (!hasCalendarAccess && !loading) {
+        return (
+          <div 
+            className="block cursor-pointer"
+            onClick={() => {
+              setUpgradeFeature({
+                name: 'Content Calendar',
+                description: 'Plan and schedule your content with our advanced calendar view.'
+              });
+              setShowUpgradeModal(true);
+            }}
+          >
+            <div className="flex items-center justify-between px-3 py-2.5 rounded-xl mb-1.5 text-gray-400 hover:bg-white/5 hover:text-white transition-all duration-200">
+              <div className="flex items-center">
+                <item.icon size={20} className="mr-3 flex-shrink-0" />
+                <span className="truncate">{item.name}</span>
+              </div>
+              <Lock size={14} className="text-orange-400" />
+            </div>
+          </div>
+        );
+      }
+    }
+
+    // Always allow navigation to /generate - credit check happens on generate button click
+    if (item.href === "/generate") {
+      return (
+        <Link href={item.href} className="block" onClick={toggleSidebar}>
+          <div
+            className={`flex items-center px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer mb-1.5
+              ${
+                active
+                  ? "text-white font-bold bg-white/10 border border-white/5 shadow-[inset_0_0_15px_rgba(255,255,255,0.05)]"
+                  : "text-gray-400 hover:bg-white/5 hover:text-white"
+              }
+            `}
+          >
+            <item.icon
+              size={20}
+              className={`mr-3 flex-shrink-0 ${
+                active ? "text-orange-400" : ""
+              }`}
+            />
+            <span className="truncate">{item.name}</span>
+          </div>
+        </Link>
+      );
+    }
+
     return (
-      <Link
-        href={item.href}
-        className="block"
-        onClick={toggleSidebar}
-      >
+      <Link href={item.href} className="block" onClick={toggleSidebar}>
         <div
           className={`flex items-center px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer mb-1.5
             ${
@@ -130,7 +202,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         <GlassCard
           className={`
             h-full flex flex-col
-            rounded-none lg:rounded-r-3xl
+            rounded-none 
             px-5 py-6 sm:px-6 sm:py-8
             border-y-0 border-l-0
           `}
@@ -157,8 +229,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
 
           {/* FOOTER */}
           <div className="mt-6 pt-4 border-t border-white/10 flex-shrink-0">
-            <button 
-              onClick={handleSignOut} 
+            <button
+              onClick={handleSignOut}
               className="flex w-full rounded-xl items-center text-gray-400 px-3 py-2.5 cursor-pointer hover:bg-white/5 hover:text-white transition group"
             >
               <LogOut
@@ -170,6 +242,15 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
           </div>
         </GlassCard>
       </aside>
+
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        featureName={upgradeFeature.name}
+        description={upgradeFeature.description}
+        currentPlan={getPlanName()}
+      />
     </>
   );
 };

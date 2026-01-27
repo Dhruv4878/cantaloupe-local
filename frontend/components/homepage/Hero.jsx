@@ -131,7 +131,7 @@ const HeroSection = () => {
             {/* Explore Features Button – rotating border, pill radius */}
             <div className="border-rotate-glow relative inline-flex items-center justify-center">
               <Link
-                href="/features"
+                href="/pricing"
                 className="
                   border-rotate-inner
                   flex items-center justify-center 
@@ -142,7 +142,7 @@ const HeroSection = () => {
                   px-4 py-2 sm:px-5 sm:py-2.5
                 "
               >
-                Explore Features 
+                Explore plans 
               </Link>
             </div>
           </div>

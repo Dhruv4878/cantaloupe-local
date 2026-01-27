@@ -40,6 +40,8 @@ const DisconnectButton = ({ children, className = "", ...props }) => (
   </button>
 );
 
+
+
 /* ----------------------------- Platform Config ----------------------------- */
 const PLATFORMS = [
   {
@@ -84,9 +86,9 @@ const ConnectAccountsView = () => {
     process.env.NEXT_PUBLIC_META_REDIRECT_URI ||
     "http://localhost:5000/api/social/facebook/callback";
 
-  const metaScopes =
+    const metaScopes =
     process.env.NEXT_PUBLIC_META_SCOPES ||
-    "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,";
+    "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management";
 
   const [connections, setConnections] = useState({
     facebook: false,
@@ -97,14 +99,13 @@ const ConnectAccountsView = () => {
 
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(null);
-  const [error, setError] = useState(null); 
+  const [error, setError] = useState(null);
 
   /* ----------------------------- Helpers ----------------------------- */
   const getToken = () => {
     if (typeof window === "undefined") return null;
     const token = sessionStorage.getItem("authToken");
     if (!token) {
-      setError("Please sign in first.");
       return null;
     }
     return token;
@@ -134,7 +135,9 @@ const ConnectAccountsView = () => {
         instagram: !!(
           social.instagram?.accessToken && social.instagram?.igBusinessId
         ),
-        linkedin: !!(social.linkedin?.accessToken && social.linkedin?.memberId),
+        linkedin: !!(
+          social.linkedin?.accessToken && social.linkedin?.memberId
+        ),
         twitter: !!(social.twitter?.accessToken && social.twitter?.userId),
       });
     } catch (e) {
@@ -157,11 +160,8 @@ const ConnectAccountsView = () => {
 
     if (params.get("connect_error")) {
       let msg = "Failed to connect Facebook.";
-      if (params.get("no_pages"))
-        msg = "No Facebook Pages found for your account.";
-      if (params.get("no_page_token"))
-        msg =
-          "No valid Page Access Token found. Please ensure you grant 'Manage Pages' permissions.";
+      if (params.get("no_pages")) msg = "No Facebook Pages found for your account.";
+      if (params.get("no_page_token")) msg = "No valid Page Access Token found. Please ensure you grant 'Manage Pages' permissions.";
 
       setError(msg);
       window.history.replaceState({}, "", window.location.pathname);
@@ -284,9 +284,8 @@ const ConnectAccountsView = () => {
                   {p.description}
                 </p>
                 <p
-                  className={`text-xs font-medium ${
-                    connected ? "text-green-400" : "text-yellow-300"
-                  }`}
+                  className={`text-xs font-medium ${connected ? "text-green-400" : "text-yellow-300"
+                    }`}
                 >
                   {statusText(p.id)}
                 </p>
@@ -302,13 +301,15 @@ const ConnectAccountsView = () => {
                 </DisconnectButton>
               ) : (
                 <GradientButton
-                  className={`mt-4 ${BUTTON_LAYOUT}`}
+                className={`mt-4 ${BUTTON_LAYOUT}`}
                   disabled={working === p.id}
                   onClick={() => handleConnect(p.id)}
                 >
                   {working === p.id ? "Please wait…" : "Connect"}
                 </GradientButton>
               )}
+
+
             </GlassCard>
           );
         })}

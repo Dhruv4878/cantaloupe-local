@@ -158,6 +158,13 @@ const PostSchema = new mongoose.Schema({
     default: Date.now,
     index: true,
   },
+
+  /* ---------- Credit Tracking ---------- */
+  usedCredits: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
 });
 
 /* ======================================================
@@ -167,6 +174,7 @@ PostSchema.index({ userId: 1, createdAt: -1 });
 PostSchema.index({ "lifecycle.publish.isPublished": 1 });
 PostSchema.index({ "lifecycle.schedule.isScheduled": 1 });
 PostSchema.index({ "lifecycle.publish.platforms": 1 });
+PostSchema.index({ userId: 1, usedCredits: 1 });
 
 /* ======================================================
    STATIC HELPERS (THIS IS THE KEY PART)
@@ -187,6 +195,7 @@ PostSchema.statics.updateLifecycleOnPublish = async function (
 
   /* ---------- Publish ---------- */
   if (!post.lifecycle.publish) {
+    // No publish summary exists yet — create one with the incoming mode and timestamp
     post.lifecycle.publish = {
       isPublished: true,
       platforms: [platform],
@@ -195,13 +204,29 @@ PostSchema.statics.updateLifecycleOnPublish = async function (
     };
   } else {
     post.lifecycle.publish.isPublished = true;
-    post.lifecycle.publish.mode = mode;
 
+    // Ensure platforms list includes this platform
     if (!post.lifecycle.publish.platforms.includes(platform)) {
       post.lifecycle.publish.platforms.push(platform);
     }
 
-    post.lifecycle.publish.publishedAt = new Date();
+    // Preserve an existing direct publish timestamp/mode
+    // - If this publish is a DIRECT publish, always record the time and set mode to 'direct'
+    // - If this publish is SCHEDULED, only set publishedAt if it is not already set (i.e., first publish)
+    //   and do not override a previous 'direct' mode
+    if (mode === 'direct') {
+      post.lifecycle.publish.publishedAt = new Date();
+      post.lifecycle.publish.mode = 'direct';
+    } else {
+      // mode === 'scheduled'
+      if (!post.lifecycle.publish.publishedAt) {
+        post.lifecycle.publish.publishedAt = new Date();
+      }
+      // only set mode to scheduled if it hasn't already been marked 'direct'
+      if (post.lifecycle.publish.mode !== 'direct') {
+        post.lifecycle.publish.mode = 'scheduled';
+      }
+    }
   }
 
   /* ---------- Schedule Summary ---------- */
@@ -291,4 +316,4 @@ PostSchema.statics.updateLifecycleOnPublishFailure = async function (
 ====================================================== */
 const Post = mongoose.model("Post", PostSchema);
 
-module.exports = Post;
+module.exports = Post; 

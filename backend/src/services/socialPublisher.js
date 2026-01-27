@@ -93,7 +93,8 @@ const ensureProfileForPlatform = (profile, platform) => {
   }
 
   if (platform === "twitter") {
-    if (!social.twitter?.refreshToken) {
+    // Accept either OAuth2 refreshToken (modern) OR legacy oauthToken/oauthTokenSecret
+    if (!social.twitter?.refreshToken && !(social.twitter?.oauthToken && social.twitter?.oauthTokenSecret)) {
       throw new SocialPublishError("Twitter not connected", 400);
     }
     return social.twitter;
@@ -242,25 +243,95 @@ const publishToPlatform = async ({ post, profile, platform }) => {
 
     /* ---------------- TWITTER (X) ---------------- */
     if (normalized === "twitter") {
-      const client = new TwitterApi({
-        clientId: process.env.TWITTER_CLIENT_ID,
-        clientSecret: process.env.TWITTER_CLIENT_SECRET,
-      });
+      // Always post text-only to Twitter/X (no image uploads). We'll try OAuth2 (refresh token) first and
+      // fall back to legacy OAuth1.0a tokens if present.
 
-      const {
-        client: refreshedClient,
-        accessToken,
-        refreshToken,
-      } = await client.refreshOAuth2Token(creds.refreshToken);
+      // Ensure we obey Twitter's 280-char limit
+      const tweetText = mergedCaption.length > 280 ? mergedCaption.slice(0, 277) + "..." : mergedCaption;
 
-      profile.social.twitter.accessToken = accessToken;
-      profile.social.twitter.refreshToken = refreshToken;
-      await profile.save();
+      // 1) OAuth2 (modern): use refresh token to obtain a client and post via v2
+      if (creds.refreshToken) {
+        const client = new TwitterApi({
+          clientId: process.env.TWITTER_CLIENT_ID,
+          clientSecret: process.env.TWITTER_CLIENT_SECRET,
+        });
 
-      await refreshedClient.v2.tweet({ text: mergedCaption });
+        const {
+          client: refreshedClient,
+          accessToken,
+          refreshToken,
+        } = await client.refreshOAuth2Token(creds.refreshToken);
 
-      await markScheduleEntryPosted(post._id, "twitter");
-      return { success: true, platform: "twitter" };
+        profile.social.twitter.accessToken = accessToken;
+        profile.social.twitter.refreshToken = refreshToken;
+        await profile.save();
+
+        try {
+          await refreshedClient.v2.tweet({ text: tweetText });
+        } catch (e) {
+          if (e?.response?.status === 403) {
+            throw new SocialPublishError(
+              "Twitter API returned 403 (permission denied). Ensure the connected account and app have 'tweet.write' scope and tokens are valid.",
+              403,
+              e?.response?.data || null
+            );
+          }
+          throw e;
+        }
+
+        await markScheduleEntryPosted(post._id, "twitter");
+        return { success: true, platform: "twitter" };
+      }
+
+      // 2) Legacy OAuth1.0a tokens: sign request and post text-only to statuses/update
+      if (creds.oauthToken && creds.oauthTokenSecret) {
+        const oauth = new OAuth({
+          consumer: { key: process.env.TWITTER_API_KEY || process.env.TWITTER_CLIENT_ID, secret: process.env.TWITTER_API_SECRET_KEY || process.env.TWITTER_CLIENT_SECRET },
+          signature_method: "HMAC-SHA1",
+          hash_function(base_string, key) {
+            return crypto.createHmac("sha1", key).update(base_string).digest("base64");
+          },
+        });
+
+        const url = "https://api.twitter.com/1.1/statuses/update.json";
+        const requestData = {
+          url,
+          method: "POST",
+        };
+
+        const authHeader = oauth.toHeader(
+          oauth.authorize(requestData, { key: creds.oauthToken, secret: creds.oauthTokenSecret })
+        );
+
+        // POST with form-encoded body
+        try {
+          await axios.post(
+            url,
+            new URLSearchParams({ status: tweetText }),
+            {
+              headers: {
+                Authorization: authHeader.Authorization,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+            }
+          );
+        } catch (e) {
+          if (e?.response?.status === 403) {
+            throw new SocialPublishError(
+              "Twitter API returned 403 (permission denied). Ensure the connected account and app have 'tweet.write' scope and tokens are valid.",
+              403,
+              e?.response?.data || null
+            );
+          }
+          throw e;
+        }
+
+        await markScheduleEntryPosted(post._id, "twitter");
+        return { success: true, platform: "twitter" };
+      }
+
+      // If we reach here, no valid tokens were available
+      throw new SocialPublishError("Twitter credentials missing or invalid", 400);
     }
 
     throw new SocialPublishError("Unsupported platform", 400);

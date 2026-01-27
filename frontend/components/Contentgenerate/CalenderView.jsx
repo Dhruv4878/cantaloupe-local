@@ -37,6 +37,7 @@ const getPlatformIcon = (p) => {
 };
 
 /* ---------- Preview Modal ---------- */
+/* ---------- Preview Modal (Updated for Explicit Time & Labels) ---------- */
 const PreviewModal = ({ isOpen, onClose, posts, date }) => {
   const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -55,7 +56,6 @@ const PreviewModal = ({ isOpen, onClose, posts, date }) => {
 
   // Status Styling Logic
   let statusConfig = { color: "bg-gray-500/20 text-gray-400", icon: Clock, label: "Unknown" };
-  
   if (currentPost.type === "published") {
     statusConfig = { color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30", icon: CheckCircle2, label: "Published" };
   } else if (currentPost.type === "scheduled") {
@@ -67,6 +67,14 @@ const PreviewModal = ({ isOpen, onClose, posts, date }) => {
   }
 
   const StatusIcon = statusConfig.icon;
+
+  // Helper to format date nicely (e.g., "Jan 7, 13:40")
+  const formatDateTime = (isoString) => {
+    if (!isoString) return "";
+    return new Date(isoString).toLocaleString([], { 
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -114,30 +122,61 @@ const PreviewModal = ({ isOpen, onClose, posts, date }) => {
                 </div>
               )}
               
-              {/* Platforms List */}
+              {/* Platforms List with DETAILED TIMING */}
               <div className="p-4 bg-black/20">
                 <h4 className="text-[10px] uppercase tracking-widest text-gray-500 mb-3 font-semibold">
-                   {currentPost.type === 'generated' ? 'Target Platforms' : 'Publish Status'}
+                   Platform Details
                 </h4>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {currentPost.platformDetails && currentPost.platformDetails.length > 0 ? (
                     currentPost.platformDetails.map((pd, i) => (
-                      <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
-                        <div className="flex items-center gap-2">
-                          <div className="p-1.5 bg-white/10 rounded-full text-white">{getPlatformIcon(pd.name)}</div>
-                          <span className="text-xs font-medium capitalize text-white/90">{pd.name}</span>
+                      <div key={i} className="flex flex-col gap-1 p-2.5 rounded-lg bg-white/5 border border-white/5">
+                        {/* Platform Name & Badge */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-white/10 rounded-full text-white">{getPlatformIcon(pd.name)}</div>
+                                <span className="text-xs font-medium capitalize text-white/90">{pd.name}</span>
+                            </div>
+                            {/* Do not show status badge for generated items as requested */}
+                            {currentPost.type !== 'generated' && (
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full border capitalize ${
+                                pd.status === 'posted' || pd.status === 'published' 
+                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                    : pd.status === 'failed' 
+                                    ? "bg-red-500/10 text-red-400 border-red-500/20"
+                                    : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+                                }`}>
+                                {pd.status === 'posted' ? 'published' : pd.status}
+                                </span>
+                            )}
                         </div>
-                        {currentPost.type !== 'generated' && (
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full border capitalize ${
-                            pd.status === 'posted' || pd.status === 'published' 
-                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                : pd.status === 'failed' 
-                                ? "bg-red-500/10 text-red-400 border-red-500/20"
-                                : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
-                            }`}>
-                            {pd.status === 'posted' ? 'published' : pd.status}
-                            </span>
-                        )}
+                        
+                        {/* TIMING DETAILS (The Fix) */}
+                        <div className="pl-8 text-[10px] text-gray-400 space-y-0.5 mt-1">
+                            {/* 1. Generated Time */}
+                            {currentPost.type === 'generated' && pd.createdAt && (
+                                <div className="flex items-center gap-1">
+                                    <Sparkles size={10} className="text-gray-500"/>
+                                    <span>Generated: {formatDateTime(pd.createdAt)}</span>
+                                </div>
+                            )}
+
+                            {/* 2. Scheduled Time (Only for scheduled items) */}
+                            {pd.scheduledAt && (
+                                <div className="flex items-center gap-1">
+                                    <Clock size={10} className="text-yellow-500/70"/>
+                                    <span>Sched: {formatDateTime(pd.scheduledAt)}</span>
+                                </div>
+                            )}
+
+                            {/* 3. Published Time (For both Direct & Scheduled-that-executed) */}
+                            {pd.publishedAt && (
+                                <div className="flex items-center gap-1">
+                                    <CheckCircle2 size={10} className="text-emerald-500/70"/>
+                                    <span>Pub: {formatDateTime(pd.publishedAt)}</span>
+                                </div>
+                            )}
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -147,10 +186,6 @@ const PreviewModal = ({ isOpen, onClose, posts, date }) => {
               </div>
             </div>
             
-            <div className="text-center text-xs text-gray-500">
-               Time: {currentPost.time}
-            </div>
-
             {/* View Post Button */}
             {currentPost.postId && (
               <button
@@ -167,7 +202,6 @@ const PreviewModal = ({ isOpen, onClose, posts, date }) => {
     </div>
   );
 };
-
 /* ---------- Filter Button ---------- */
 const FilterButton = ({ active, onClick, color, label }) => {
     const colorClasses = {
@@ -214,118 +248,138 @@ const CalendarPage = () => {
 
   useEffect(() => { fetchCalendarData(); }, [currentMonth]);
 
-  const fetchCalendarData = async () => {
-    const token = sessionStorage.getItem("authToken");
-    if (!token) return;
+  /* ---------- Fetch Calendar Data (Updated for Strict Time Separation) ---------- */
+/* ---------- Fetch Calendar Data (Decoupled Times) ---------- */
+const fetchCalendarData = async () => {
+  const token = sessionStorage.getItem("authToken");
+  if (!token) return;
 
-    const start = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-    const end = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59, 999);
+  const start = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const end = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    try {
-      const res = await fetch(`${API_URL}/posts/calendar?from=${start.toISOString()}&to=${end.toISOString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+  try {
+    const res = await fetch(`${API_URL}/posts/calendar?from=${start.toISOString()}&to=${end.toISOString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) return;
+    const json = await res.json();
+    const posts = Array.isArray(json.posts) ? json.posts : [];
+
+    const map = {};
+
+    // Helper to add events
+    const addEventToMap = (date, type, statusLabel, details, postData) => {
+      if (!date) return;
+      const key = toLocalDateKey(date);
+      if (!map[key]) map[key] = { types: new Set(), items: [] };
+      
+      map[key].types.add(type); 
+      map[key].items.push({
+        id: postData._id + type + date, 
+        postId: postData._id, 
+        type: type, 
+        status: statusLabel,
+        image: postData.content?.imageUrl || postData.content?.image || "",
+        platformDetails: details
       });
+    };
 
-      if (!res.ok) return;
-      const json = await res.json();
-      const posts = Array.isArray(json.posts) ? json.posts : [];
+    posts.forEach((post) => {
+      // Track platforms handled by schedule to prevent overlap
+      const scheduledPlatformSet = new Set();
 
-      const map = {};
+      // -------------------------------------------
+      // 1. GENERATED Event
+      // -------------------------------------------
+      if (post.createdAt) {
+        const platformsObj = post.content?.platforms || {};
+        const names = Object.keys(platformsObj).length > 0 ? Object.keys(platformsObj) : ['Social'];
+        const details = names.map(n => ({ name: n, status: 'created', createdAt: post.createdAt }));
+        addEventToMap(post.createdAt, "generated", "Generated", details, post);
+      }
 
-      const addEventToMap = (date, type, statusLabel, details, postData) => {
-        if (!date) return; // Safety check
-        const key = toLocalDateKey(date);
-        if (!map[key]) map[key] = { types: new Set(), items: [] };
-        
-        map[key].types.add(type); 
-        map[key].items.push({
-          id: postData._id + type + date,
-          postId: postData._id, // Store the actual post ID for navigation
-          type: type, 
-          status: statusLabel,
-          time: new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          image: postData.content?.imageUrl || postData.content?.image || "",
-          platformDetails: details
-        });
-      };
+      // -------------------------------------------
+      // 2. SCHEDULED Event Logic (FIXED: Decoupled Time)
+      // -------------------------------------------
+      if (post.schedule?.entries?.length > 0) {
+          post.schedule.entries.forEach(e => scheduledPlatformSet.add(e.platform));
 
-      posts.forEach((post) => {
-        // -------------------------------------------
-        // 1. GENERATED Event (Red Dot)
-        // -------------------------------------------
-        if (post.createdAt) {
-          const platformsObj = post.content?.platforms || {};
-          const names = Object.keys(platformsObj).length > 0 ? Object.keys(platformsObj) : ['Social'];
-          const details = names.map(n => ({ name: n, status: 'created' }));
-          addEventToMap(post.createdAt, "generated", "Generated", details, post);
-        }
+          const groupedByTime = {};
+          post.schedule.entries.forEach(entry => {
+              const t = new Date(entry.scheduledAt).toISOString();
+              if (!groupedByTime[t]) groupedByTime[t] = [];
+              groupedByTime[t].push(entry);
+          });
 
-        // -------------------------------------------
-        // 2. SCHEDULED Event Logic (Split by Status)
-        // -------------------------------------------
-        if (post.schedule?.entries?.length > 0) {
-            // Group by time first
-            const groupedByTime = {};
-            post.schedule.entries.forEach(entry => {
-                const t = new Date(entry.scheduledAt).toISOString();
-                if (!groupedByTime[t]) groupedByTime[t] = [];
-                groupedByTime[t].push(entry);
-            });
+          Object.entries(groupedByTime).forEach(([timeStr, entries]) => {
+              const dateObj = new Date(timeStr);
+              
+              // FIX: Do NOT look at post.lifecycle.publishedAt for scheduled items.
+              // Use the entry's own 'scheduledAt' as the source of truth for its timing.
+              const buildDetails = (entList) => entList.map(e => ({
+                 name: e.platform, 
+                 status: e.status, 
+                 scheduledAt: e.scheduledAt, 
+                 // If it is posted, we assume it posted AT the scheduled time.
+                 // This prevents it from grabbing a "Direct Post" timestamp from a different platform.
+                 publishedAt: (e.status === 'posted' || e.status === 'published') 
+                    ? e.scheduledAt 
+                    : null
+              }));
 
-            Object.entries(groupedByTime).forEach(([timeStr, entries]) => {
-                const dateObj = new Date(timeStr);
-                
-                // Bucket entries by status
-                const successEntries = entries.filter(e => e.status === 'posted' || e.status === 'published');
-                const failedEntries = entries.filter(e => e.status === 'failed');
-                const pendingEntries = entries.filter(e => e.status !== 'posted' && e.status !== 'published' && e.status !== 'failed');
+              const successEntries = entries.filter(e => e.status === 'posted' || e.status === 'published');
+              const failedEntries = entries.filter(e => e.status === 'failed');
+              const pendingEntries = entries.filter(e => e.status !== 'posted' && e.status !== 'published' && e.status !== 'failed');
 
-                // A. Add Success Event (Green)
-                if (successEntries.length > 0) {
-                    const details = successEntries.map(e => ({ name: e.platform, status: e.status }));
-                    addEventToMap(dateObj, "published", "Published", details, post);
-                }
+              if (successEntries.length > 0) {
+                  addEventToMap(dateObj, "published", "Published", buildDetails(successEntries), post);
+              }
+              if (failedEntries.length > 0) {
+                  addEventToMap(dateObj, "failed", "Failed", buildDetails(failedEntries), post);
+              }
+              if (pendingEntries.length > 0) {
+                  addEventToMap(dateObj, "scheduled", "Scheduled", buildDetails(pendingEntries), post);
+              }
+          });
+      } 
+      
+      // -------------------------------------------
+      // 3. DIRECT PUBLISH / FAIL Logic (Stays strict)
+      // -------------------------------------------
+      if (post.lifecycle?.publish) {
+          const pub = post.lifecycle.publish;
+          
+          const directSuccessPlatforms = (pub.platforms || []).filter(p => !scheduledPlatformSet.has(p));
+          const directFailedPlatforms = (pub.failedPlatforms || []).filter(p => !scheduledPlatformSet.has(p));
 
-                // B. Add Failure Event (Orange)
-                if (failedEntries.length > 0) {
-                    const details = failedEntries.map(e => ({ name: e.platform, status: e.status }));
-                    addEventToMap(dateObj, "failed", "Failed", details, post);
-                }
+          // A. Direct Successes (Uses lifecycle time)
+          if (directSuccessPlatforms.length > 0) {
+              const details = directSuccessPlatforms.map(p => ({ 
+                  name: p, 
+                  status: 'posted', 
+                  publishedAt: pub.publishedAt || post.createdAt 
+              }));
+              const pubDate = pub.publishedAt || post.createdAt;
+              addEventToMap(pubDate, "published", "Published", details, post);
+          }
 
-                // C. Add Pending Schedule Event (Yellow)
-                if (pendingEntries.length > 0) {
-                    const details = pendingEntries.map(e => ({ name: e.platform, status: e.status }));
-                    addEventToMap(dateObj, "scheduled", "Scheduled", details, post);
-                }
-            });
-        } 
-        // -------------------------------------------
-        // 3. DIRECT PUBLISH / FAIL Logic (Split by Lifecycle Arrays)
-        // -------------------------------------------
-        else if (post.lifecycle?.publish) {
-            const pub = post.lifecycle.publish;
-            
-            // A. Handle SUCCESSES (Green Event)
-            // Even if isPublished is false, we might have some successes in the array
-            if (pub.platforms && Array.isArray(pub.platforms) && pub.platforms.length > 0) {
-                const details = pub.platforms.map(p => ({ name: p, status: 'posted' }));
-                const pubDate = pub.publishedAt || post.createdAt;
-                addEventToMap(pubDate, "published", "Published", details, post);
-            }
+          // B. Direct Failures
+          if (directFailedPlatforms.length > 0) {
+              const details = directFailedPlatforms.map(p => ({ 
+                  name: p, 
+                  status: 'failed', 
+                  publishedAt: pub.lastFailedAt || post.createdAt 
+              }));
+              const failDate = pub.lastFailedAt || post.createdAt;
+              addEventToMap(failDate, "failed", "Failed", details, post);
+          }
+      }
+    });
 
-            // B. Handle FAILURES (Orange Event)
-            if (pub.failedPlatforms && Array.isArray(pub.failedPlatforms) && pub.failedPlatforms.length > 0) {
-                const details = pub.failedPlatforms.map(p => ({ name: p, status: 'failed' }));
-                // Use lastFailedAt if available, else createdAt
-                const failDate = pub.lastFailedAt || post.createdAt;
-                addEventToMap(failDate, "failed", "Failed", details, post);
-            }
-        }
-      });
-
-      setCalendarMap(map);
-    } catch (err) { console.error(err); }
-  };
+    setCalendarMap(map);
+  } catch (err) { console.error(err); }
+};
 
   const handleDateClick = (dateKey, items) => {
     const visibleItems = items.filter(item => filters[item.type]);

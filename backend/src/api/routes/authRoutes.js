@@ -1,18 +1,30 @@
 // backend/src/api/routes/authRoutes.js
 
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
-// 1. Include auth handlers
-const { registerUser, loginUser, googleLogin } = require('../controllers/authController');
+// ✅ Import correct handlers (MATCH authController.js EXACTLY)
+const {
+  sendSignupOtp,
+  verifySignupOtp,
+  loginUser,
+  googleLogin,
+} = require("../controllers/authController");
 
-// This is your existing route for email registration
-router.post('/register', registerUser);
+// =====================
+// SIGNUP (EMAIL + OTP)
+// =====================
+router.post("/send-otp", sendSignupOtp);
+router.post("/verify-otp", verifySignupOtp);
 
-// This is your existing route for email login
-router.post('/login', loginUser);
+// =====================
+// LOGIN
+// =====================
+router.post("/login", loginUser);
 
-// 2. Add this new route for handling the Firebase Google Sign-In
-router.post('/google-login', googleLogin);
+// =====================
+// GOOGLE LOGIN / SIGNUP
+// =====================
+router.post("/google-login", googleLogin);
 
 module.exports = router;

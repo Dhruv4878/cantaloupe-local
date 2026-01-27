@@ -13,6 +13,9 @@ import {
   ChevronDown,
 } from "lucide-react";
 import GradientButton from "../GradientButton";
+import UnusualActivityModal from "../UnusualActivityModal";
+import UpgradeModal from "../UpgradeModal";
+import { useFeatureAccess } from "../../hooks/useFeatureAccess";
 
 // --- Shared UI (Glass + Gradient) --- //
 const GlassCard = ({ children, className = "" }) => (
@@ -38,13 +41,23 @@ const platformIcons = {
 };
 
 // --- Helper Button (Orange) --- //
-const OrangeButton = ({ children, className = "", disabled, onClick, type = "button" }) => (
+const OrangeButton = ({
+  children,
+  className = "",
+  disabled,
+  onClick,
+  type = "button",
+}) => (
   <button
     type={type}
     onClick={onClick}
     disabled={disabled}
     className={`relative inline-flex items-center justify-center font-medium transition-all duration-200 
-      ${disabled ? "opacity-50 cursor-not-allowed bg-gray-600" : "hover:scale-[1.02] active:scale-95"}
+      ${
+        disabled
+          ? "opacity-50 cursor-not-allowed bg-gray-600"
+          : "hover:scale-[1.02] active:scale-95"
+      }
       bg-gradient-to-r from-orange-500 to-amber-500 text-white ${className}`}
   >
     {children}
@@ -54,6 +67,8 @@ const OrangeButton = ({ children, className = "", disabled, onClick, type = "but
 const PostEditor = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isFeatureAvailable, getPlanName } = useFeatureAccess();
+  
   const [generatedData, setGeneratedData] = useState(null);
   const [postId, setPostId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -67,6 +82,7 @@ const PostEditor = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [imageGenerating, setImageGenerating] = useState(false);
+  const imageRetryCountRef = useRef(0);
   const [isRegenerateMenuOpen, setIsRegenerateMenuOpen] = useState(false);
   const [regenerateOptions, setRegenerateOptions] = useState({
     text: false,
@@ -86,7 +102,17 @@ const PostEditor = () => {
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
   const [isScheduling, setIsScheduling] = useState(false);
+
+  // Unusual Activity Modal State
+  const [showUnusualActivityModal, setShowUnusualActivityModal] = useState(false);
   
+  // Upgrade Modal State
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  
+  // Plan status cache to avoid repeated API calls
+  const [planStatusCache, setPlanStatusCache] = useState(null);
+  const [planStatusChecked, setPlanStatusChecked] = useState(false);
+
   // NEW STATE: Schedule for all connected platforms
   const [scheduleAll, setScheduleAll] = useState(false);
 
@@ -101,6 +127,36 @@ const PostEditor = () => {
     captionLoading ||
     hashtagsLoading ||
     isScheduling;
+
+  // --- Helper: Handle API Response with Suspended Plan Check ---
+  const handleApiResponse = async (response, errorMessage = "API call failed") => {
+    if (!response.ok) {
+      // Check for suspended plan error first
+      if (response.status === 403) {
+        try {
+          const errorData = await response.json();
+          if (errorData.suspendedPlan) {
+            setShowUnusualActivityModal(true);
+            return null; // Return null to indicate suspended plan
+          }
+        } catch (parseError) {
+          // Continue with normal error handling if JSON parsing fails
+        }
+      }
+      
+      // Handle other errors
+      let errorMsg = errorMessage;
+      try {
+        const errData = await response.json();
+        errorMsg = errData.error || errData.message || errData.detail || errorMessage;
+      } catch (e) {
+        errorMsg = await response.text() || errorMessage;
+      }
+      throw new Error(errorMsg);
+    }
+    
+    return response.json();
+  };
 
   // --- Helper: Show Toast ---
   const showToast = (message, type = "success") => {
@@ -119,7 +175,7 @@ const PostEditor = () => {
         const clickedInsideAdd = addNode && addNode.contains(e.target);
         if (!clickedInsideReg) setIsRegenerateMenuOpen(false);
         if (!clickedInsideAdd) setIsAddPlatformsOpen(false);
-      } catch (_) { }
+      } catch (_) {}
     }
     document.addEventListener("mousedown", handleDocClick);
     return () => document.removeEventListener("mousedown", handleDocClick);
@@ -138,12 +194,86 @@ const PostEditor = () => {
     });
   };
 
-  const handleRegeneratePost = () => {
+  // Check if user's plan is suspended (cached version)
+  const checkPlanStatus = async (forceRefresh = false) => {
+    try {
+      // Use cached result if available and not forcing refresh
+      if (planStatusCache !== null && planStatusChecked && !forceRefresh) {
+        if (!planStatusCache) {
+          setShowUnusualActivityModal(true);
+        }
+        return planStatusCache;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const token = typeof window !== "undefined" ? sessionStorage.getItem("authToken") : null;
+      
+      if (!token) {
+        setPlanStatusCache(false);
+        setPlanStatusChecked(true);
+        return false;
+      }
+
+      const response = await fetch(`${apiUrl}/subscription/current`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Plan status check:", data);
+        
+        // Check if user has a paid subscription that's been suspended by admin
+        const hasActiveSubscription = data?.plan?.planName && data.plan.planName !== "Free";
+        const isSubscriptionActive = data?.subscription?.is_active;
+        
+        // If user has a paid plan but it's been deactivated by admin, show unusual activity modal
+        if (hasActiveSubscription && isSubscriptionActive === false) {
+          console.log("Plan suspended by admin - showing unusual activity modal");
+          setPlanStatusCache(false);
+          setPlanStatusChecked(true);
+          setShowUnusualActivityModal(true);
+          return false; // Plan is suspended
+        }
+      }
+      
+      setPlanStatusCache(true);
+      setPlanStatusChecked(true);
+      return true; // Plan is active or user is on free plan
+    } catch (error) {
+      console.error("Error checking plan status:", error);
+      setPlanStatusCache(true);
+      setPlanStatusChecked(true);
+      return true; // Allow on error to avoid blocking legitimate users
+    }
+  };
+
+  const canNavigateToGenerate = () => {
+    try {
+      if (typeof window === "undefined") return true;
+      const used =
+        parseInt(sessionStorage.getItem("usedPosts") || "0", 10) || 0;
+      const limit = Number(sessionStorage.getItem("creditLimit") || "0");
+      return used < limit;
+    } catch (_) {
+      return true;
+    }
+  };
+
+  const handleRegeneratePost = async () => {
+    const planActive = await checkPlanStatus();
+    if (!planActive) return; // Modal will be shown by checkPlanStatus
+    
+    if (!canNavigateToGenerate()) return;
     router.push("/generate");
   };
 
   const handleRegenerateSelected = async () => {
     if (!generatedData || !activeTab) return;
+    
+    // Check plan status before allowing regeneration
+    const planActive = await checkPlanStatus();
+    if (!planActive) return; // Modal will be shown by checkPlanStatus
+    
     const apiUrl =
       process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
     const token =
@@ -154,7 +284,7 @@ const PostEditor = () => {
 
     try {
       if (regenerateOptions.post) {
-        handleRegeneratePost();
+        await handleRegeneratePost();
         return;
       }
 
@@ -185,11 +315,18 @@ const PostEditor = () => {
           headers,
           body,
         })
-          .then(async (res) => (res.ok ? res.json() : null))
-          .then((json) => {
+          .then(async (res) => {
+            const json = await handleApiResponse(res, "Failed to regenerate captions");
+            if (json === null) {
+              // Plan is suspended, modal will be shown
+              captionsResult = null;
+              return;
+            }
             captionsResult = json;
           })
-          .catch(() => { });
+          .catch(() => {
+            captionsResult = null;
+          });
         promises.push(p);
       }
 
@@ -208,8 +345,13 @@ const PostEditor = () => {
             headers,
             body,
           })
-            .then(async (res) => (res.ok ? res.json() : null))
-            .then((json) => {
+            .then(async (res) => {
+              const json = await handleApiResponse(res, "Failed to regenerate hashtags");
+              if (json === null) {
+                // Plan is suspended, modal will be shown
+                hashtagResults[p] = null;
+                return;
+              }
               hashtagResults[p] = json?.platforms?.[p]?.hashtags || null;
             })
             .catch(() => {
@@ -288,24 +430,29 @@ const PostEditor = () => {
               aiImagePrompt: generatedData.aiImagePrompt,
             }),
           });
-          if (res.ok) {
-            const json = await res.json();
-            if (json?.imageUrl) {
-              updated.imageUrl = json.imageUrl;
-              const existing = Array.isArray(updated.imageVariants)
-                ? updated.imageVariants
-                : [];
-              updated.imageVariants = [...existing, json.imageUrl];
-              if (postId) {
-                await fetch(`${apiUrl}/posts/${postId}`, {
-                  method: "PUT",
-                  headers,
-                  body: JSON.stringify({
-                    content: updated,
-                    imageUrlVariant: json.imageUrl,
-                  }),
-                });
-              }
+          
+          const json = await handleApiResponse(res, "Failed to regenerate image");
+          if (json === null) {
+            // Plan is suspended, modal will be shown
+            setImageGenerating(false);
+            return;
+          }
+          
+          if (json?.imageUrl) {
+            updated.imageUrl = json.imageUrl;
+            const existing = Array.isArray(updated.imageVariants)
+              ? updated.imageVariants
+              : [];
+            updated.imageVariants = [...existing, json.imageUrl];
+            if (postId) {
+              await fetch(`${apiUrl}/posts/${postId}`, {
+                method: "PUT",
+                headers,
+                body: JSON.stringify({
+                  content: updated,
+                  imageUrlVariant: json.imageUrl,
+                }),
+              });
             }
           }
         }
@@ -340,8 +487,12 @@ const PostEditor = () => {
       if (!postId || !activeTab) return;
       setIsPosting(true);
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-      const token = typeof window !== "undefined" ? sessionStorage.getItem("authToken") : null;
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const token =
+        typeof window !== "undefined"
+          ? sessionStorage.getItem("authToken")
+          : null;
       if (!token) {
         showToast("Please login again.", "error");
         router.push("/login");
@@ -350,7 +501,11 @@ const PostEditor = () => {
 
       const platformToSend = mapUiToBackendPlatform(activeTab);
 
-      if (!["facebook", "instagram", "linkedin", "twitter"].includes(platformToSend)) {
+      if (
+        !["facebook", "instagram", "linkedin", "twitter"].includes(
+          platformToSend
+        )
+      ) {
         showToast(`Posting to ${activeTab} is not supported yet.`, "error");
         setIsPosting(false);
         return;
@@ -370,7 +525,11 @@ const PostEditor = () => {
         let errorMessage = "Unknown error";
         try {
           const errData = await resp.json();
-          errorMessage = errData.error || errData.message || errData.detail || "Request failed";
+          errorMessage =
+            errData.error ||
+            errData.message ||
+            errData.detail ||
+            "Request failed";
         } catch (e) {
           errorMessage = await resp.text();
         }
@@ -378,8 +537,12 @@ const PostEditor = () => {
       }
 
       // Success
-      showToast(`Posted to ${activeTab === "x" ? "X (Twitter)" : activeTab} successfully`, "success");
-
+      showToast(
+        `Posted to ${
+          activeTab === "x" ? "X (Twitter)" : activeTab
+        } successfully`,
+        "success"
+      );
     } catch (e) {
       console.error(e);
       // RED TOAST FOR ERROR
@@ -388,7 +551,6 @@ const PostEditor = () => {
       setIsPosting(false);
     }
   };
-
 
   // --- UPDATED: HANDLE SCHEDULE (Supports 'All Connected') ---
   const handleSchedulePost = async () => {
@@ -399,8 +561,12 @@ const PostEditor = () => {
 
     try {
       setIsScheduling(true);
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-      const token = typeof window !== "undefined" ? sessionStorage.getItem("authToken") : null;
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const token =
+        typeof window !== "undefined"
+          ? sessionStorage.getItem("authToken")
+          : null;
       if (!token) {
         showToast("Please login again.", "error");
         router.push("/login");
@@ -417,29 +583,44 @@ const PostEditor = () => {
         return;
       }
       const timezone =
-        Intl.DateTimeFormat().resolvedOptions().timeZone ||
-        "UTC";
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
       // 1. DETERMINE TARGET PLATFORMS
       let targetPlatforms = [];
-      
+
       if (scheduleAll) {
         // Fetch profile to find ALL connected platforms
         const profResp = await fetch(`${apiUrl}/profile/me`, {
-            headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}` },
         });
         if (!profResp.ok) throw new Error("Failed to fetch connected accounts");
         const profile = await profResp.json();
 
-        if (profile?.social?.facebook?.pageId && profile?.social?.facebook?.accessToken) targetPlatforms.push("facebook");
-        if (profile?.social?.instagram?.igBusinessId && profile?.social?.instagram?.accessToken) targetPlatforms.push("instagram");
-        if (profile?.social?.linkedin?.memberId && profile?.social?.linkedin?.accessToken) targetPlatforms.push("linkedin");
-        if (profile?.social?.twitter?.userId && profile?.social?.twitter?.accessToken) targetPlatforms.push("twitter");
+        if (
+          profile?.social?.facebook?.pageId &&
+          profile?.social?.facebook?.accessToken
+        )
+          targetPlatforms.push("facebook");
+        if (
+          profile?.social?.instagram?.igBusinessId &&
+          profile?.social?.instagram?.accessToken
+        )
+          targetPlatforms.push("instagram");
+        if (
+          profile?.social?.linkedin?.memberId &&
+          profile?.social?.linkedin?.accessToken
+        )
+          targetPlatforms.push("linkedin");
+        if (
+          profile?.social?.twitter?.userId &&
+          profile?.social?.twitter?.accessToken
+        )
+          targetPlatforms.push("twitter");
 
         if (targetPlatforms.length === 0) {
-            showToast("No connected platforms found to schedule.", "error");
-            setIsScheduling(false);
-            return;
+          showToast("No connected platforms found to schedule.", "error");
+          setIsScheduling(false);
+          return;
         }
       } else {
         // Just the current active tab
@@ -466,19 +647,23 @@ const PostEditor = () => {
       // We start with existing entries...
       let mergedEntries = [...existingEntries];
 
-      targetPlatforms.forEach(p => {
-         // Remove any conflict for this specific platform & time (overwrite logic)
-         mergedEntries = mergedEntries.filter(
-            (e) => !(e.platform === p && new Date(e.scheduledAt).getTime() === scheduledAt.getTime())
-         );
-         
-         // Add new entry
-         mergedEntries.push({
-            platform: p,
-            scheduledAt,
-            status: "pending",
-            timezone,
-         });
+      targetPlatforms.forEach((p) => {
+        // Remove any conflict for this specific platform & time (overwrite logic)
+        mergedEntries = mergedEntries.filter(
+          (e) =>
+            !(
+              e.platform === p &&
+              new Date(e.scheduledAt).getTime() === scheduledAt.getTime()
+            )
+        );
+
+        // Add new entry
+        mergedEntries.push({
+          platform: p,
+          scheduledAt,
+          status: "pending",
+          timezone,
+        });
       });
 
       const schedulePayload = {
@@ -501,13 +686,16 @@ const PostEditor = () => {
         throw new Error(txt || "Failed to save schedule");
       }
 
-      const msg = scheduleAll 
-        ? `Scheduled for all ${targetPlatforms.length} connected platforms at ${scheduledAt.toLocaleString()}`
-        : `Scheduled ${activeTab === "x" ? "X (Twitter)" : activeTab} for ${scheduledAt.toLocaleString()}`;
-      
+      const msg = scheduleAll
+        ? `Scheduled for all ${
+            targetPlatforms.length
+          } connected platforms at ${scheduledAt.toLocaleString()}`
+        : `Scheduled ${
+            activeTab === "x" ? "X (Twitter)" : activeTab
+          } for ${scheduledAt.toLocaleString()}`;
+
       showToast(msg, "success");
       setIsScheduleOpen(false);
-
     } catch (e) {
       console.error(e);
       showToast(e.message || "Failed to schedule post.", "error");
@@ -521,8 +709,12 @@ const PostEditor = () => {
       if (!postId) return;
       setIsPosting(true);
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-      const token = typeof window !== "undefined" ? sessionStorage.getItem("authToken") : null;
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const token =
+        typeof window !== "undefined"
+          ? sessionStorage.getItem("authToken")
+          : null;
       if (!token) {
         showToast("Please login again.", "error");
         router.push("/login");
@@ -536,10 +728,26 @@ const PostEditor = () => {
       const profile = await profResp.json();
 
       const targets = [];
-      if (profile?.social?.facebook?.pageId && profile?.social?.facebook?.accessToken) targets.push("facebook");
-      if (profile?.social?.instagram?.igBusinessId && profile?.social?.instagram?.accessToken) targets.push("instagram");
-      if (profile?.social?.linkedin?.memberId && profile?.social?.linkedin?.accessToken) targets.push("linkedin");
-      if (profile?.social?.twitter?.userId && profile?.social?.twitter?.accessToken) targets.push("twitter");
+      if (
+        profile?.social?.facebook?.pageId &&
+        profile?.social?.facebook?.accessToken
+      )
+        targets.push("facebook");
+      if (
+        profile?.social?.instagram?.igBusinessId &&
+        profile?.social?.instagram?.accessToken
+      )
+        targets.push("instagram");
+      if (
+        profile?.social?.linkedin?.memberId &&
+        profile?.social?.linkedin?.accessToken
+      )
+        targets.push("linkedin");
+      if (
+        profile?.social?.twitter?.userId &&
+        profile?.social?.twitter?.accessToken
+      )
+        targets.push("twitter");
 
       if (!targets.length) {
         showToast("No connected platforms found", "error");
@@ -577,12 +785,16 @@ const PostEditor = () => {
         if (succeeded.length === 0) {
           showToast("Failed to post to any platform.", "error");
         } else {
-          showToast(`Posted to ${succeeded.length} platforms. Failed: ${failed.join(", ")}`, "error");
+          showToast(
+            `Posted to ${succeeded.length} platforms. Failed: ${failed.join(
+              ", "
+            )}`,
+            "error"
+          );
         }
       } else {
         showToast("Posted to all connected platforms!", "success");
       }
-
     } catch (e) {
       console.error(e);
       showToast(e.message || "Failed to post to all platforms", "error");
@@ -659,53 +871,104 @@ const PostEditor = () => {
     loadFromDb();
   }, [searchParams, router]);
 
+  // Check plan status on component load
+  useEffect(() => {
+    const initialPlanCheck = async () => {
+      await checkPlanStatus(true); // Force refresh on initial load
+    };
+    
+    initialPlanCheck();
+  }, []);
+
+  // Simple debug logging
+  useEffect(() => {
+    console.log("imageGenerating:", imageGenerating);
+  }, [imageGenerating]);
+
   useEffect(() => {
     const generateIfMissing = async () => {
-      if (!generatedData || generatedData.imageUrl || imageGenerating) return;
+      // Simple checks - if we already have an image or are generating, skip
+      if (!generatedData || generatedData.imageUrl || imageGenerating) {
+        return;
+      }
+      
       const aiImagePrompt = generatedData.aiImagePrompt;
       if (!aiImagePrompt) return;
+      
+      // Prevent infinite loops - max 3 retries
+      if (imageRetryCountRef.current >= 3) {
+        console.log("Max image generation retries reached");
+        return;
+      }
+      
       try {
         setImageGenerating(true);
-        const apiUrl =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-        const token =
-          typeof window !== "undefined"
-            ? sessionStorage.getItem("authToken")
-            : null;
-        if (!token) return;
+        imageRetryCountRef.current += 1;
+        
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+        const token = sessionStorage.getItem("authToken");
+        
+        if (!token) {
+          setImageGenerating(false);
+          return;
+        }
+
+        console.log(`Generating image (attempt ${imageRetryCountRef.current}/3)`);
+
+        const requestBody = {
+          aiImagePrompt,
+          ...(generatedData.userLogoUrl && { userLogoUrl: generatedData.userLogoUrl }),
+        };
+
         const resp = await fetch(`${apiUrl}/generate-image`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ aiImagePrompt }),
+          body: JSON.stringify(requestBody),
         });
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (!data?.imageUrl) return;
-        const updated = { ...generatedData, imageUrl: data.imageUrl };
-        setGeneratedData(updated);
-        if (postId) {
-          await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
-            }/posts/${postId}`,
-            {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({ content: updated }),
-            }
-          );
+        
+        const data = await handleApiResponse(resp, "Failed to generate image");
+        if (data === null) {
+          // Plan is suspended, modal will be shown
+          setImageGenerating(false);
+          return;
         }
-      } finally {
+        
+        if (!data?.imageUrl) {
+          console.error("No image URL in response");
+          setImageGenerating(false);
+          return;
+        }
+        
+        console.log("Image generated successfully:", data.imageUrl);
+        
+        // Update state immediately
+        setGeneratedData(prev => ({ ...prev, imageUrl: data.imageUrl }));
+        setImageGenerating(false);
+        imageRetryCountRef.current = 0;
+        
+        // Update database in background (don't wait for it)
+        if (postId) {
+          fetch(`${apiUrl}/posts/${postId}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ content: { ...generatedData, imageUrl: data.imageUrl } }),
+          }).catch(err => console.error("Database update failed:", err));
+        }
+        
+      } catch (error) {
+        console.error("Image generation error:", error);
         setImageGenerating(false);
       }
     };
+    
     generateIfMissing();
-  }, [generatedData, imageGenerating, postId]);
+  }, [generatedData, postId]);
 
   if (loading)
     return (
@@ -830,7 +1093,9 @@ const PostEditor = () => {
         throw new Error(text || "Failed to delete post");
       }
 
-      router.push("/generate");
+      if (canNavigateToGenerate()) {
+        router.push("/generate");
+      }
     } catch (e) {
       console.error("Failed to delete post:", e);
       setError(e.message || "Failed to delete post");
@@ -841,11 +1106,11 @@ const PostEditor = () => {
 
   const handleDashboard = () => {
     router.push("/dashboard");
-  }
+  };
 
   const handleRecentPost = () => {
     router.push("/recentpost");
-  }
+  };
 
   return (
     <div className="min-h-screen bg-[#050816] text-white">
@@ -853,19 +1118,18 @@ const PostEditor = () => {
         {/* MAIN EDITOR CARD */}
         <GlassCard className="flex-1">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b border-white/10 pb-4">
-            <h1 className="text-2xl font-bold mb-2 sm:mb-0">
-              Generated Post
-            </h1>
+            <h1 className="text-2xl font-bold mb-2 sm:mb-0">Generated Post</h1>
             <div className="flex space-x-2 relative">
               {/* EDIT / CANCEL TOGGLE */}
               {!isEditing ? (
                 <button
                   onClick={startEditing}
                   disabled={uiDisabled}
-                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-sm border ${uiDisabled
-                    ? "bg-white/5 text-gray-500 border-white/10 cursor-not-allowed"
-                    : "bg-white/10 text-white border-white/20 hover:bg-white/20"
-                    }`}
+                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-sm border ${
+                    uiDisabled
+                      ? "bg-white/5 text-gray-500 border-white/10 cursor-not-allowed"
+                      : "bg-white/10 text-white border-white/20 hover:bg-white/20"
+                  }`}
                 >
                   <Edit size={14} />
                   <span>Edit Post</span>
@@ -874,10 +1138,11 @@ const PostEditor = () => {
                 <button
                   onClick={handleCancelEdit}
                   disabled={uiDisabled}
-                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-sm border ${uiDisabled
-                    ? "bg-white/5 text-gray-500 border-white/10 cursor-not-allowed"
-                    : "bg-transparent text-orange-300 border-orange-400 hover:bg-orange-500/10"
-                    }`}
+                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-sm border ${
+                    uiDisabled
+                      ? "bg-white/5 text-gray-500 border-white/10 cursor-not-allowed"
+                      : "bg-transparent text-orange-300 border-orange-400 hover:bg-orange-500/10"
+                  }`}
                 >
                   <span>Cancel</span>
                 </button>
@@ -905,10 +1170,11 @@ const PostEditor = () => {
                     </div>
                     <div className="p-2 space-y-1">
                       <label
-                        className={`flex items-center gap-2 px-2 py-1 rounded ${regenerateOptions.post
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:bg-white/5 cursor-pointer"
-                          }`}
+                        className={`flex items-center gap-2 px-2 py-1 rounded ${
+                          regenerateOptions.post
+                            ? "opacity-50 cursor-not-allowed"
+                            : "hover:bg-white/5 cursor-pointer"
+                        }`}
                       >
                         <input
                           type="checkbox"
@@ -920,10 +1186,11 @@ const PostEditor = () => {
                         <span>Regenerate post text</span>
                       </label>
                       <label
-                        className={`flex items-center gap-2 px-2 py-1 rounded ${regenerateOptions.post
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:bg-white/5 cursor-pointer"
-                          }`}
+                        className={`flex items-center gap-2 px-2 py-1 rounded ${
+                          regenerateOptions.post
+                            ? "opacity-50 cursor-not-allowed"
+                            : "hover:bg-white/5 cursor-pointer"
+                        }`}
                       >
                         <input
                           type="checkbox"
@@ -935,10 +1202,11 @@ const PostEditor = () => {
                         <span>Regenerate hashtags</span>
                       </label>
                       <label
-                        className={`flex items-center gap-2 px-2 py-1 rounded ${regenerateOptions.post
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:bg-white/5 cursor-pointer"
-                          }`}
+                        className={`flex items-center gap-2 px-2 py-1 rounded ${
+                          regenerateOptions.post
+                            ? "opacity-50 cursor-not-allowed"
+                            : "hover:bg-white/5 cursor-pointer"
+                        }`}
                       >
                         <input
                           type="checkbox"
@@ -965,10 +1233,11 @@ const PostEditor = () => {
                         type="button"
                         onClick={() => setIsRegenerateMenuOpen(false)}
                         disabled={uiDisabled}
-                        className={`px-3 py-1.5 text-xs rounded-full border ${uiDisabled
-                          ? "border-white/10 text-gray-500 cursor-not-allowed"
-                          : "border-white/20 text-gray-100 hover:bg-white/5"
-                          }`}
+                        className={`px-3 py-1.5 text-xs rounded-full border ${
+                          uiDisabled
+                            ? "border-white/10 text-gray-500 cursor-not-allowed"
+                            : "border-white/20 text-gray-100 hover:bg-white/5"
+                        }`}
                       >
                         Close
                       </button>
@@ -980,7 +1249,6 @@ const PostEditor = () => {
                       >
                         Regenerate
                       </GradientButton>
-
                     </div>
                   </div>
                 )}
@@ -993,9 +1261,7 @@ const PostEditor = () => {
             {/* IMAGE COLUMN */}
             <div className="lg:col-span-7">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-lg font-semibold text-white">
-                  Post Image
-                </h2>
+                <h2 className="text-lg font-semibold text-white">Post Image</h2>
                 {Array.isArray(generatedData.imageVariants) &&
                   generatedData.imageVariants.length > 0 && (
                     <div className="flex items-center gap-2">
@@ -1011,12 +1277,13 @@ const PostEditor = () => {
                             }))
                           }
                           disabled={uiDisabled}
-                          className={`px-2 py-1 text-xs rounded-full border ${generatedData.imageUrl === url
-                            ? "bg-indigo-500 text-white border-indigo-400"
-                            : uiDisabled
+                          className={`px-2 py-1 text-xs rounded-full border ${
+                            generatedData.imageUrl === url
+                              ? "bg-indigo-500 text-white border-indigo-400"
+                              : uiDisabled
                               ? "bg-white/5 text-gray-500 border-white/10 cursor-not-allowed"
                               : "bg-white/5 text-gray-100 border-white/20 hover:bg-white/10"
-                            }`}
+                          }`}
                         >
                           {idx + 1}
                         </button>
@@ -1051,7 +1318,6 @@ const PostEditor = () => {
 
             {/* TEXT COLUMN */}
             <div className="lg:col-span-5 self-stretch h-full">
-              
               {/* RESPONSIVE TABS (Grid 2x2 on Mobile, Flex on Desktop) */}
               <div className="mb-4 border-b border-white/10 pb-2">
                 <nav className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
@@ -1061,9 +1327,10 @@ const PostEditor = () => {
                       onClick={() => !uiDisabled && setActiveTab(platform)}
                       disabled={uiDisabled}
                       className={`flex items-center justify-center sm:justify-start gap-2 py-2 px-2 border-b-2 font-medium capitalize transition-colors
-                        ${activeTab === platform
-                          ? "border-orange-400 text-orange-300 bg-white/5 sm:bg-transparent rounded sm:rounded-none"
-                          : uiDisabled
+                        ${
+                          activeTab === platform
+                            ? "border-orange-400 text-orange-300 bg-white/5 sm:bg-transparent rounded sm:rounded-none"
+                            : uiDisabled
                             ? "border-transparent text-gray-500 cursor-not-allowed"
                             : "border-transparent text-gray-300 hover:text-white hover:bg-white/5 sm:hover:bg-transparent rounded sm:rounded-none"
                         }`}
@@ -1077,7 +1344,9 @@ const PostEditor = () => {
 
               {/* Caption */}
               <div className="bg-white/5 p-4 rounded-2xl border border-white/10 mb-4">
-                <h3 className="font-medium text-white mb-2">Post Text</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-medium text-white">Post Text</h3>
+                </div>
                 {isEditing ? (
                   <textarea
                     className="w-full text-sm rounded-md border border-white/20 bg-black/40 text-white p-2 focus:outline-none focus:ring-1 focus:ring-orange-400"
@@ -1132,8 +1401,6 @@ const PostEditor = () => {
                 )}
               </div>
 
-
-
               {/* Actions */}
               <div className="mt-4 space-y-3">
                 {/* Post button + dropdown */}
@@ -1144,7 +1411,6 @@ const PostEditor = () => {
                     disabled={uiDisabled}
                     className="w-full"
                   >
-
                     {isPosting ? (
                       <span className="flex items-center gap-2 justify-center">
                         <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
@@ -1164,10 +1430,11 @@ const PostEditor = () => {
                         type="button"
                         onClick={handlePublishNow}
                         disabled={uiDisabled}
-                        className={`w-full text-left px-3 py-2 text-sm ${uiDisabled
-                          ? "text-gray-500 cursor-not-allowed"
-                          : "hover:bg-white/5 text-gray-100"
-                          }`}
+                        className={`w-full text-left px-3 py-2 text-sm ${
+                          uiDisabled
+                            ? "text-gray-500 cursor-not-allowed"
+                            : "hover:bg-white/5 text-gray-100"
+                        }`}
                       >
                         Post to current platform ({activeTab || "—"})
                       </button>
@@ -1175,10 +1442,11 @@ const PostEditor = () => {
                         type="button"
                         onClick={handlePublishAllConnected}
                         disabled={uiDisabled}
-                        className={`w-full text-left px-3 py-2 text-sm ${uiDisabled
-                          ? "text-gray-500 cursor-not-allowed"
-                          : "hover:bg-white/5 text-gray-100"
-                          }`}
+                        className={`w-full text-left px-3 py-2 text-sm ${
+                          uiDisabled
+                            ? "text-gray-500 cursor-not-allowed"
+                            : "hover:bg-white/5 text-gray-100"
+                        }`}
                       >
                         Post to all connected platforms
                       </button>
@@ -1198,14 +1466,22 @@ const PostEditor = () => {
                 {/* Toggle schedule panel */}
                 <button
                   type="button"
-                  onClick={() => setIsScheduleOpen((v) => !v)}
+                  onClick={() => {
+                    // Check if user has smart scheduling feature
+                    if (!isFeatureAvailable('smart_scheduling')) {
+                      setShowUpgradeModal(true);
+                      return;
+                    }
+                    setIsScheduleOpen((v) => !v);
+                  }}
                   disabled={uiDisabled}
-                  className={`w-full px-4 py-2 rounded-full text-sm font-medium border transition ${uiDisabled
-                    ? "bg-white/5 text-gray-500 border-white/10 cursor-not-allowed"
-                    : isScheduleOpen
+                  className={`w-full px-4 py-2 rounded-full text-sm font-medium border transition ${
+                    uiDisabled
+                      ? "bg-white/5 text-gray-500 border-white/10 cursor-not-allowed"
+                      : isScheduleOpen
                       ? "bg-white/15 text-white border-white/30"
                       : "bg-transparent text-white border-white/30 hover:bg-white/10"
-                    }`}
+                  }`}
                 >
                   {isScheduleOpen ? "Close Scheduling" : "Schedule Post"}
                 </button>
@@ -1223,7 +1499,6 @@ const PostEditor = () => {
                           value={scheduleDate}
                           onChange={(e) => setScheduleDate(e.target.value)}
                           className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400"
-
                         />
                       </div>
                       <div>
@@ -1236,7 +1511,6 @@ const PostEditor = () => {
                           onChange={(e) => setScheduleTime(e.target.value)}
                           step="900" // 15 min steps
                           className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400"
-
                         />
                       </div>
                     </div>
@@ -1254,7 +1528,8 @@ const PostEditor = () => {
                     </label>
 
                     <p className="text-[11px] sm:text-xs text-white/50">
-                      Your post will be queued and automatically published at the selected time.
+                      Your post will be queued and automatically published at
+                      the selected time.
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
@@ -1278,7 +1553,6 @@ const PostEditor = () => {
                       >
                         {isScheduling ? "Scheduling..." : "Confirm Schedule"}
                       </GradientButton>
-
                     </div>
                   </div>
                 )}
@@ -1293,12 +1567,8 @@ const PostEditor = () => {
                   >
                     {isSaving ? "Saving..." : "Save"}
                   </GradientButton>
-
                 )}
               </div>
-
-
-
             </div>
           </div>
         </GlassCard>
@@ -1332,10 +1602,11 @@ const PostEditor = () => {
                 type="button"
                 onClick={() => !uiDisabled && setIsAddPlatformsOpen((v) => !v)}
                 disabled={uiDisabled}
-                className={`w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-sm border ${uiDisabled
-                  ? "bg-white/5 text-gray-500 border-white/10 cursor-not-allowed"
-                  : "bg-white/10 text-white hover:bg-white/20 border-white/20"
-                  }`}
+                className={`w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-sm border ${
+                  uiDisabled
+                    ? "bg-white/5 text-gray-500 border-white/10 cursor-not-allowed"
+                    : "bg-white/10 text-white hover:bg-white/20 border-white/20"
+                }`}
               >
                 <Plus size={14} />
                 Add platforms
@@ -1354,10 +1625,11 @@ const PostEditor = () => {
                       return (
                         <label
                           key={p}
-                          className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer ${alreadySelected
-                            ? "opacity-40 cursor-not-allowed"
-                            : "hover:bg-white/5"
-                            }`}
+                          className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer ${
+                            alreadySelected
+                              ? "opacity-40 cursor-not-allowed"
+                              : "hover:bg-white/5"
+                          }`}
                         >
                           <input
                             type="checkbox"
@@ -1386,10 +1658,11 @@ const PostEditor = () => {
                       type="button"
                       onClick={() => setIsAddPlatformsOpen(false)}
                       disabled={uiDisabled}
-                      className={`px-3 py-1.5 text-xs rounded-full border ${uiDisabled
-                        ? "border-white/10 text-gray-500 cursor-not-allowed"
-                        : "border-white/20 text-gray-100 hover:bg-white/5"
-                        }`}
+                      className={`px-3 py-1.5 text-xs rounded-full border ${
+                        uiDisabled
+                          ? "border-white/10 text-gray-500 cursor-not-allowed"
+                          : "border-white/20 text-gray-100 hover:bg-white/5"
+                      }`}
                     >
                       Close
                     </button>
@@ -1416,17 +1689,20 @@ const PostEditor = () => {
                           return;
                         }
                         try {
-                          const res = await fetch(`${apiUrl}/create-text-plan`, {
-                            method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                              Authorization: `Bearer ${token}`,
-                            },
-                            body: JSON.stringify({
-                              brief: generatedData.postContent || "",
-                              platforms: toAdd,
-                            }),
-                          });
+                          const res = await fetch(
+                            `${apiUrl}/create-text-plan`,
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                              body: JSON.stringify({
+                                brief: generatedData.postContent || "",
+                                platforms: toAdd,
+                              }),
+                            }
+                          );
                           if (res.ok) {
                             const data = await res.json();
                             const merged = {
@@ -1451,7 +1727,7 @@ const PostEditor = () => {
                             }
                             if (toAdd[0]) setActiveTab(toAdd[0]);
                           }
-                        } catch (_) { }
+                        } catch (_) {}
                         setIsAddPlatformsOpen(false);
                         setAddPlatformsSelection({});
                         setAddPlatformsLoading(false);
@@ -1484,10 +1760,11 @@ const PostEditor = () => {
               <button
                 onClick={handleDelete}
                 disabled={isDeleting || uiDisabled}
-                className={`w-full text-left flex items-center space-x-2 px-3 py-2 rounded-xl ${isDeleting || uiDisabled
-                  ? "bg-red-500/20 text-red-300 cursor-not-allowed"
-                  : "bg-red-500/10 text-red-300 hover:bg-red-500/20"
-                  }`}
+                className={`w-full text-left flex items-center space-x-2 px-3 py-2 rounded-xl ${
+                  isDeleting || uiDisabled
+                    ? "bg-red-500/20 text-red-300 cursor-not-allowed"
+                    : "bg-red-500/10 text-red-300 hover:bg-red-500/20"
+                }`}
               >
                 <Trash2 size={16} />
                 <span>{isDeleting ? "Deleting..." : "Delete Post"}</span>
@@ -1501,10 +1778,16 @@ const PostEditor = () => {
               Next Steps
             </h2>
             <div className="space-y-3">
-              <button onClick={handleDashboard} className="w-full px-4 py-2 rounded-full text-sm font-medium bg-white/10 hover:bg-white/20 border border-white/20 text-white">
+              <button
+                onClick={handleDashboard}
+                className="w-full px-4 py-2 rounded-full text-sm font-medium bg-white/10 hover:bg-white/20 border border-white/20 text-white"
+              >
                 Go to Dashboard
               </button>
-              <button onClick={handleRecentPost} className="w-full px-4 py-2 rounded-full text-sm font-medium bg-white/10 hover:bg-white/20 border border-white/20 text-white">
+              <button
+                onClick={handleRecentPost}
+                className="w-full px-4 py-2 rounded-full text-sm font-medium bg-white/10 hover:bg-white/20 border border-white/20 text-white"
+              >
                 Recently Generated Posts
               </button>
             </div>
@@ -1515,13 +1798,30 @@ const PostEditor = () => {
       {/* UPDATED DYNAMIC TOAST (Red for Errors) */}
       {toastState.message && (
         <div className="fixed top-20 right-6 z-50 animate-in fade-in slide-in-from-right-5 duration-300">
-          <div className={`px-4 py-2 rounded shadow-lg text-white text-sm font-medium ${
-            toastState.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'
-          }`}>
+          <div
+            className={`px-4 py-2 rounded shadow-lg text-white text-sm font-medium ${
+              toastState.type === "error" ? "bg-red-600" : "bg-emerald-600"
+            }`}
+          >
             {toastState.message}
           </div>
         </div>
       )}
+      
+      {/* Unusual Activity Modal */}
+      <UnusualActivityModal 
+        isOpen={showUnusualActivityModal}
+        onClose={() => setShowUnusualActivityModal(false)}
+      />
+      
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        featureName="Smart Scheduling"
+        description="Schedule your posts for optimal engagement times across all your connected platforms."
+        currentPlan={getPlanName()}
+      />
     </div>
   );
 };

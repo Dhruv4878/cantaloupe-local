@@ -1,9 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    experimental: {
-      turbo: false,
-    },
-  };
-  
-  export default nextConfig;
-  
+  // Minimal configuration to avoid workspace issues
+  experimental: {
+    optimizePackageImports: ['lucide-react'],
+  },
+};
+
+export default nextConfig;

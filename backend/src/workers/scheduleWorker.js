@@ -154,6 +154,8 @@ const pollDueSchedules = async () => {
   }
 };
 
+const subscriptionService = require('../services/subscriptionService');
+
 const startWorker = async () => {
   if (!process.env.MONGO_URI) {
     console.error('SCHEDULE WORKER: MONGO_URI is required.');
@@ -176,6 +178,23 @@ const startWorker = async () => {
 
   runner();
   setInterval(runner, POLL_INTERVAL_MS);
+
+  // Daily expiration check (24 hours)
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const expireRunner = async () => {
+    try {
+      const res = await subscriptionService.deactivateExpiredSubscriptions();
+      if (res && res.nModified) {
+        console.log('[Scheduler] Deactivated expired subscriptions:', res.nModified);
+      }
+    } catch (err) {
+      console.error('[Scheduler] Expiration check error:', err);
+    }
+  };
+
+  // Run once on startup then schedule daily
+  expireRunner();
+  setInterval(expireRunner, ONE_DAY_MS);
 };
 
 startWorker().catch((err) => {

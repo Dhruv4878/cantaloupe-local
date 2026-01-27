@@ -5,7 +5,7 @@ import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "../../lib/firebase";
 import { useRouter } from "next/navigation";
 import GradientButton from "../GradientButton"; // adjust path if needed
-
+import axios from "axios";
 
 // Google Icon
 const GoogleIcon = () => (
@@ -73,11 +73,11 @@ const SpinnerIcon = () => (
 
 export default function LoginForm() {
   const [view, setView] = useState("initial");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(true); // start true while checking auth
-  const [error, setError] = useState(null);
   const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
 
   // ✅ Auto-check if user already logged in
   useEffect(() => {
@@ -101,12 +101,12 @@ export default function LoginForm() {
           if (res.ok) {
             try {
               sessionStorage.setItem("hasProfile", "true");
-            } catch (_) { }
+            } catch (_) {}
             router.replace("/dashboard");
           } else {
             try {
               sessionStorage.setItem("hasProfile", "false");
-            } catch (_) { }
+            } catch (_) {}
             router.replace("/businesses/create");
           }
         }
@@ -114,7 +114,7 @@ export default function LoginForm() {
         console.error("Auth check failed:", err);
         try {
           sessionStorage.setItem("hasProfile", "false");
-        } catch (_) { }
+        } catch (_) {}
         router.replace("/businesses/create");
       } finally {
         setIsLoading(false);
@@ -151,7 +151,7 @@ export default function LoginForm() {
           const normalizedEmail = (email || "").trim();
           if (normalizedEmail)
             sessionStorage.setItem("userEmail", normalizedEmail);
-        } catch (_) { }
+        } catch (_) {}
 
         const rawFlag =
           data && (data.hasProfile ?? data.hasflag ?? data.userHasProfile);
@@ -178,7 +178,10 @@ export default function LoginForm() {
 
               // Check if onboarding is complete
               const onboardingComplete = profile?.onboardingComplete === true;
-              sessionStorage.setItem("hasProfile", onboardingComplete ? "true" : "false");
+              sessionStorage.setItem(
+                "hasProfile",
+                onboardingComplete ? "true" : "false"
+              );
 
               if (onboardingComplete) {
                 router.push("/dashboard");
@@ -186,13 +189,16 @@ export default function LoginForm() {
                 router.push("/businesses/create");
               }
               return;
-            } catch (_) { }
+            } catch (_) {}
           }
-        } catch (_) { }
+        } catch (_) {}
 
         // Fallback: use the hasProfile flag from login response
         if (rawFlag !== undefined) {
-          sessionStorage.setItem("hasProfile", hasProfileNorm ? "true" : "false");
+          sessionStorage.setItem(
+            "hasProfile",
+            hasProfileNorm ? "true" : "false"
+          );
           if (hasProfileNorm) {
             router.push("/dashboard");
           } else {
@@ -202,12 +208,19 @@ export default function LoginForm() {
           // Default: no profile found, redirect to onboarding
           try {
             sessionStorage.setItem("hasProfile", "false");
-          } catch (_) { }
+          } catch (_) {}
           router.push("/businesses/create");
         }
       }
     } catch (err) {
-      setError(err.message);
+      // If the user is suspended, the global SuspendedListener will show the modal.
+      if (err.message && err.message.toLowerCase().includes("suspend")) {
+        try {
+          sessionStorage.removeItem("authToken");
+        } catch (_) {}
+      } else {
+        setError(err.message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -224,7 +237,7 @@ export default function LoginForm() {
       const user = result.user;
       try {
         if (user?.email) sessionStorage.setItem("userEmail", user.email);
-      } catch (_) { }
+      } catch (_) {}
 
       const idToken = await user.getIdToken();
 
@@ -258,7 +271,10 @@ export default function LoginForm() {
           process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
         if (rawFlag !== undefined) {
-          sessionStorage.setItem("hasProfile", hasProfileNorm ? "true" : "false");
+          sessionStorage.setItem(
+            "hasProfile",
+            hasProfileNorm ? "true" : "false"
+          );
           if (hasProfileNorm) {
             try {
               const profileRes = await fetch(`${apiUrlBase}/profile/me`, {
@@ -269,9 +285,9 @@ export default function LoginForm() {
                   const profile = await profileRes.json();
                   const email = (profile?.user?.email || "").trim();
                   if (email) sessionStorage.setItem("userEmail", email);
-                } catch (_) { }
+                } catch (_) {}
               }
-            } catch (_) { }
+            } catch (_) {}
             router.push("/dashboard");
           } else {
             router.push("/businesses/create");
@@ -284,26 +300,32 @@ export default function LoginForm() {
             if (profileRes.ok) {
               try {
                 sessionStorage.setItem("hasProfile", "true");
-              } catch (_) { }
+              } catch (_) {}
               try {
                 const profile = await profileRes.json();
                 const email = (profile?.user?.email || "").trim();
                 if (email) sessionStorage.setItem("userEmail", email);
-              } catch (_) { }
+              } catch (_) {}
               router.push("/dashboard");
               return;
             }
-          } catch (_) { }
+          } catch (_) {}
           try {
             sessionStorage.setItem("hasProfile", "false");
-          } catch (_) { }
+          } catch (_) {}
           router.push("/businesses/create");
         }
       }
     } catch (error) {
-      setError(
-        error.message || "Failed to sign in with Google. Please try again."
-      );
+      if (error.message && error.message.toLowerCase().includes("suspend")) {
+        try {
+          sessionStorage.removeItem("authToken");
+        } catch (_) {}
+      } else {
+        setError(
+          error.message || "Failed to sign in with Google. Please try again."
+        );
+      }
     } finally {
       setIsLoading(false);
     }
@@ -325,27 +347,26 @@ export default function LoginForm() {
   return (
     <div
       className="
-        relative flex w-full
-        min-h-[620px] sm:min-h-[680px] lg:min-h-screen
-        items-center justify-center
-        overflow-hidden
-        px-4
-        py-10 sm:py-14 lg:py-0
-        text-white
-      "
+      relative flex w-full
+      min-h-[620px] sm:min-h-[680px] lg:min-h-screen
+      items-center justify-center
+      overflow-hidden
+      px-4
+      py-10 sm:py-14 lg:py-0
+      text-white
+    "
     >
       {/* soft background glows */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-40 bottom-0 h-80 w-80 rounded-full  blur-[120px]" />
-        <div className="absolute -right-40 top-0 h-80 w-80 rounded-full  blur-[120px]" />
+        <div className="absolute -left-40 bottom-0 h-80 w-80 rounded-full blur-[120px]" />
+        <div className="absolute -right-40 top-0 h-80 w-80 rounded-full blur-[120px]" />
       </div>
 
       {/* centered card */}
       <div className="relative z-10 w-full max-w-md">
-        {/* gradient outer edge */}
-        <div className="pointer-events-none absolute -inset-[1px] rounded-[32px]  opacity-70" />
+        <div className="pointer-events-none absolute -inset-[1px] rounded-[32px] opacity-70" />
         <div className="relative rounded-[30px] border border-white/10 bg-[#080819]/95 px-8 py-9 backdrop-blur-xl shadow-[0_0_55px_rgba(255,110,0,0.35)]">
-          {/* header inside card with space below (like signup) */}
+          {/* header */}
           <div className="mb-8 space-y-2 text-center">
             <h1
               className="text-[30px] sm:text-[32px] font-bold leading-tight"
@@ -363,13 +384,13 @@ export default function LoginForm() {
             </p>
           </div>
 
-          {/* CONTENT */}
+          {/* INITIAL VIEW */}
           {view === "initial" && (
             <div className="space-y-5 text-sm">
               <button
                 onClick={handleSignInWithGoogle}
                 disabled={isLoading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#101024] px-4 py-3 font-medium text-white hover:border-[#ff4b26]/70 hover:bg-[#151531] transition disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#101024] px-4 py-3 font-medium text-white hover:border-[#ff4b26]/70 hover:bg-[#151531] transition disabled:opacity-60"
               >
                 <GoogleIcon />
                 <span>Sign in with Google</span>
@@ -391,85 +412,68 @@ export default function LoginForm() {
               >
                 Sign in with Email
               </GradientButton>
-
             </div>
           )}
-
           {view === "email" && (
-            <form onSubmit={handleEmailLoginSubmit} className="space-y-5 text-sm">
-              {/* EMAIL */}
+            <form
+              onSubmit={handleEmailLoginSubmit}
+              className="space-y-5 text-sm"
+            >
               <div>
-                <label
-                  htmlFor="email"
-                  className="mb-1 block font-medium text-white/75"
-                >
+                <label className="mb-1 block font-medium text-white/75">
                   Email Address
                 </label>
                 <input
-                  id="email"
-                  name="email"
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-white/15 bg-[#101024] px-3.5 py-2.5 text-sm text-white placeholder:text-white/35 focus:border-[#ff4b26] focus:outline-none focus:ring-1 focus:ring-[#ff4b26]"
+                  className="w-full rounded-lg border border-white/15 bg-[#101024] px-3.5 py-2.5"
                   placeholder="you@example.com"
                 />
               </div>
 
-              {/* PASSWORD */}
               <div>
-                <label
-                  htmlFor="password"
-                  className="mb-1 block font-medium text-white/75"
-                >
+                <label className="mb-1 block font-medium text-white/75">
                   Password
                 </label>
                 <input
-                  id="password"
-                  name="password"
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-white/15 bg-[#101024] px-3.5 py-2.5 text-sm text-white placeholder:text-white/35 focus:border-[#ff4b26] focus:outline-none focus:ring-1 focus:ring-[#ff4b26]"
+                  className="w-full rounded-lg border border-white/15 bg-[#101024] px-3.5 py-2.5"
                   placeholder="••••••••"
                 />
               </div>
 
-              {/* error */}
               {error && (
                 <p className="rounded-md bg-red-900/30 px-3 py-2 text-center text-xs text-red-300">
                   {error}
                 </p>
               )}
 
-              {/* submit */}
               <GradientButton
                 type="submit"
                 disabled={isLoading}
-                className="mt-1 w-full py-2.5 text-sm font-semibold"
+                className="w-full py-2.5 text-sm font-semibold"
               >
                 {isLoading ? <SpinnerIcon /> : "Sign In"}
               </GradientButton>
 
-              <div className="pt-1 text-center">
+              <div className="text-center">
                 <button
                   type="button"
-                  onClick={() => {
-                    setView("initial");
-                    setError(null);
-                  }}
+                  onClick={() => setView("initial")}
                   className="text-xs font-medium text-[#ff4b26] hover:underline"
                 >
-                  ← Back to sign in options
+                  ← Back
                 </button>
-
               </div>
             </form>
           )}
 
-          {/* footer link */}
+          {/* footer */}
           <p className="mt-6 text-center text-xs text-white/60">
             Don’t have an account?{" "}
             <a

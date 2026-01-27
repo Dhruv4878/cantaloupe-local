@@ -41,7 +41,7 @@ const Faq = () => {
   };
 
   return (
-    <section className="w-full bg-[#00001A] flex flex-col items-center px-4 sm:px-6 lg:px-0 pt-16 sm:pt-20 pb-10 sm:pb-14 min-h-[640px]">
+    <section className="w-full bg-[#00001A] flex flex-col items-center px-4 sm:px-6 lg:px-0  pb-10 sm:pb-14 min-h-[640px]">
       
       {/* Heading */}
       <div className="w-full max-w-[963px] mx-auto text-center mb-10 space-y-3">

@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 export default function ReviewDetails() {
   const router = useRouter();
   const [description, setDescription] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [companySize, setCompanySize] = useState("");
+  const [businessType, setBusinessType] = useState("");
+  const [targetAudience, setTargetAudience] = useState("");
+  const [brandPersonality, setBrandPersonality] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
   // Restore saved values on mount
@@ -16,8 +17,9 @@ export default function ReviewDetails() {
         sessionStorage.getItem("onboardingStep2") || "{}"
       );
       if (saved.businessDescription) setDescription(saved.businessDescription);
-      if (saved.industry) setIndustry(saved.industry);
-      if (saved.companySize) setCompanySize(saved.companySize);
+      if (saved.businessType) setBusinessType(saved.businessType);
+      if (saved.targetAudience) setTargetAudience(saved.targetAudience);
+      if (saved.brandPersonality) setBrandPersonality(saved.brandPersonality);
     } catch (_) {}
   }, []);
 
@@ -25,14 +27,15 @@ export default function ReviewDetails() {
   useEffect(() => {
     const payload = {
       businessDescription: description,
-      industry,
-      companySize,
+      businessType,
+      targetAudience,
+      brandPersonality,
     };
     sessionStorage.setItem("onboardingStep2", JSON.stringify(payload));
-  }, [description, industry, companySize]);
+  }, [description, businessType, targetAudience, brandPersonality]);
 
-  // 🔥 3-step progress config
-  const steps = ["Name & Website", "Branding", "Setup"];
+  // 2-step progress config
+  const steps = ["Name & Website", "Branding"];
   const currentStep = 2;
   const progressPercent = ((currentStep - 1) / (steps.length - 1)) * 100;
   
@@ -42,19 +45,88 @@ export default function ReviewDetails() {
   }
 
   function handleNext() {
-    if (!description.trim() || !industry || !companySize) {
+    if (!description.trim() || !businessType || !targetAudience.trim() || !brandPersonality) {
       setErrorMessage("Please complete all required fields marked with *.");
       return;
     }
-    sessionStorage.setItem(
-      "onboardingStep2",
-      JSON.stringify({
-        businessDescription: description,
-        industry,
-        companySize,
-      })
-    );
-    router.push("/businesses/create/3");
+
+    // Save step 2 data
+    const step2Data = {
+      businessDescription: description,
+      businessType,
+      targetAudience,
+      brandPersonality,
+    };
+    sessionStorage.setItem("onboardingStep2", JSON.stringify(step2Data));
+
+    // Complete onboarding by saving profile to backend
+    completeOnboarding();
+  }
+
+  const completeOnboarding = async () => {
+    try {
+      // Collect all onboarding data from sessionStorage
+      let step1Data = {};
+      let step2Data = {};
+      
+      try {
+        step1Data = JSON.parse(sessionStorage.getItem("onboardingStep1") || "{}");
+        step2Data = JSON.parse(sessionStorage.getItem("onboardingStep2") || "{}");
+      } catch (err) {
+        console.error("Error parsing sessionStorage data:", err);
+      }
+
+      // Prepare profile data to send to backend (without logo and color)
+      const profileData = {
+        accountType: step1Data.accountType || "",
+        businessName: step1Data.businessName || "",
+        website: step1Data.website || "",
+        noWebsite: step1Data.noWebsite || false,
+        businessDescription: step2Data.businessDescription || "",
+        businessType: step2Data.businessType || "",
+        targetAudience: step2Data.targetAudience || "",
+        brandPersonality: step2Data.brandPersonality || "",
+      };
+
+      // Get auth token
+      const token = sessionStorage.getItem("authToken");
+      if (!token) {
+        setErrorMessage("Your session has expired. Please log in again.");
+        router.push("/login");
+        return;
+      }
+
+      // Save profile to backend
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const response = await fetch(`${apiUrl}/profile`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(profileData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to save profile");
+      }
+
+      // Profile saved successfully, set hasProfile to true
+      sessionStorage.setItem("hasProfile", "true");
+      
+      // Clear onboarding data from sessionStorage
+      try {
+        sessionStorage.removeItem("onboardingStep1");
+        sessionStorage.removeItem("onboardingStep2");
+      } catch (_) {}
+
+      // Redirect to dashboard
+      router.push("/dashboard");
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      setErrorMessage(error.message || "Failed to save profile. Please try again.");
+    }
   }
 
   return (
@@ -80,11 +152,10 @@ export default function ReviewDetails() {
             Onboarding
           </p>
           <h1 className="font-monument text-[26px] sm:text-[32px] leading-snug">
-            Review your details
+            Brand Assets & Strategy
           </h1>
           <p className="text-sm sm:text-base text-brand-gray mt-2 max-w-xl mx-auto">
-            We&apos;ve analyzed your website. Review and adjust the details
-            below.
+            Configure your brand assets and content strategy for professional results.
           </p>
         </div>
 
@@ -160,18 +231,24 @@ export default function ReviewDetails() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-slate-100 mb-1.5">
-                  Industry*
+                  Business Type*
                 </label>
                 <CustomSelect
-                  id="industry"
-                  value={industry}
-                  onChange={(v) => setIndustry(v)}
+                  id="businessType"
+                  value={businessType}
+                  onChange={(v) => setBusinessType(v)}
                   options={[
                     "---------",
                     "Technology",
-                    "Retail",
-                    "Healthcare",
+                    "Healthcare", 
+                    "Finance",
                     "Education",
+                    "Retail",
+                    "Food & Beverage",
+                    "Real Estate",
+                    "Consulting",
+                    "Creative Agency",
+                    "Other"
                   ]}
                   placeholder="---------"
                 />
@@ -182,19 +259,43 @@ export default function ReviewDetails() {
 
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-slate-100 mb-1.5">
-                  Company Size*
+                  Target Audience*
                 </label>
-                <CustomSelect
-                  id="companySize"
-                  value={companySize}
-                  onChange={(v) => setCompanySize(v)}
-                  options={["---------", "1-10", "11-50", "51-200", "200+"]}
-                  placeholder="---------"
+                <input
+                  type="text"
+                  value={targetAudience}
+                  onChange={(e) => setTargetAudience(e.target.value)}
+                  placeholder="e.g., Small business owners, 25-45"
+                  className="w-full rounded-2xl bg-black/45 border border-white/15 px-3.5 py-3 text-sm sm:text-[15px] text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-orange/80 focus:border-brand-orange/80 transition"
                 />
                 <p className="text-[11px] text-brand-gray mt-1.5">
-                  Approximate number of employees in your organization.
+                  Describe your primary target audience demographics.
                 </p>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-slate-100 mb-1.5">
+                Brand Personality*
+              </label>
+              <CustomSelect
+                id="brandPersonality"
+                value={brandPersonality}
+                onChange={(v) => setBrandPersonality(v)}
+                options={[
+                  "---------",
+                  "Professional & Trustworthy",
+                  "Creative & Bold", 
+                  "Friendly & Approachable",
+                  "Luxury & Premium",
+                  "Fun & Energetic",
+                  "Expert & Educational"
+                ]}
+                placeholder="---------"
+              />
+              <p className="text-[11px] text-brand-gray mt-1.5">
+                Choose the personality that best represents your brand.
+              </p>
             </div>
 
             {errorMessage && (
@@ -215,7 +316,7 @@ export default function ReviewDetails() {
                 type="submit"
                 className="inline-flex items-center gap-2 rounded-full px-5 sm:px-6 py-2.5 text-xs sm:text-sm font-semibold text-brand-dark bg-gradient-to-r from-brand-yellow to-brand-orange shadow-[0_0_18px_rgba(255,168,0,0.8)] hover:shadow-[0_0_24px_rgba(255,168,0,1)] transition"
               >
-                Continue
+                Complete Setup
               </button>
             </div>
           </form>

@@ -1,6 +1,0 @@
-[2025-12-17T11:38:49.562Z] Starting callback for User 69425d6371f4519cee47c66c
-[2025-12-17T11:38:50.303Z] Got user access token
-[2025-12-17T11:38:50.709Z] Facebook User Identified: Dhruv Patel (ID: 122110647399099736)
-[2025-12-17T11:38:50.709Z] Fetching pages from https://graph.facebook.com/v19.0/me/accounts
-[2025-12-17T11:38:51.296Z] Pages found: 1
-[2025-12-17T11:38:51.296Z] Page: Text page (783121398228169) - HasToken: true - Tasks: ["ADVERTISE","ANALYZE","CREATE_CONTENT","MESSAGING","MODERATE","MANAGE"]

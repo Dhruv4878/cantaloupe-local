@@ -8,18 +8,16 @@ const profileSchema = new mongoose.Schema({
     unique: true,
   },
   // Step 1
+  accountType: { type: String, enum: ['personal', 'business'], trim: true },
   businessName: { type: String, trim: true },
   website: { type: String, trim: true },
+  noWebsite: { type: Boolean, default: false },
 
-  // Step 2
+  // Step 2 - Brand Assets & Strategy
   businessDescription: { type: String },
-  industry: { type: String },
-  companySize: { type: String },
-
-  // Step 3
-  // Store uploaded logo URL
-  businessLogo: { type: String },
-  primaryBrandColor: { type: String, trim: true },
+  businessType: { type: String, trim: true },
+  targetAudience: { type: String, trim: true },
+  brandPersonality: { type: String, trim: true },
 
   onboardingComplete: {
     type: Boolean,

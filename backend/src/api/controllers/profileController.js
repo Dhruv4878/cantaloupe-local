@@ -5,19 +5,30 @@ const Profile = require('../../models/profileModel');
 exports.getMyProfile = async (req, res) => {
   try {
     // Find the profile linked to the logged-in user's ID
-    const profile = await Profile.findOne({ user: req.user.id }).populate('user', ['firstName', 'email']);
+    // Include creditLimit on populated user so clients can read current credit limits
+    const profile = await Profile.findOne({ user: req.user.id }).populate('user', ['firstName', 'email', 'creditLimit']);
 
     if (!profile) {
       // If the user has no profile, return a default empty object instead of 404
       // This prevents the frontend dashboard from crashing
-      return res.status(200).json({ 
-        social: {}, 
+      return res.status(200).json({
+        social: {},
         onboardingComplete: false,
+        accountType: null,
         message: 'No profile found, returning default structure.'
       });
     }
-    
-    res.json(profile);
+
+    // Convert Mongoose document to plain object to ensure all fields are included
+    const profileObj = profile.toObject ? profile.toObject() : profile;
+
+    // Ensure accountType is always included in the response (even if undefined/null)
+    const response = {
+      ...profileObj,
+      accountType: profileObj.accountType || null,
+    };
+
+    res.json(response);
   } catch (error) {
     console.error('Error fetching profile:', error.message);
     res.status(500).send('Server Error');
@@ -29,53 +40,46 @@ exports.getMyProfile = async (req, res) => {
 exports.createOrUpdateProfile = async (req, res) => {
   // Destructure all the expected fields from the form
   const {
+    accountType,
     businessName,
     website,
+    noWebsite,
     businessDescription,
-    industry,
-    companySize,
-    businessLogo: bodyBusinessLogo,
-    logoUrl: bodyLogoUrl,
-    primaryBrandColor,
+    businessType,
+    targetAudience,
+    brandPersonality,
   } = req.body || {};
-
-  // Consolidate logo field and log inputs
-  const businessLogo = bodyBusinessLogo || bodyLogoUrl || '';
 
   if (!req.user || !req.user.id) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
 
-  // Require a logo URL (Cloudinary secure_url) for the new 3-step flow
-  // (Optional: You can remove this check if you want to allow profile creation without logo)
-  if (!businessLogo) {
-    return res
-      .status(400)
-      .json({ message: 'businessLogo is required. Please upload a logo first.' });
-  }
-
   // Build the profile object to save to the database
   const profileFields = {
     user: req.user.id,
+    accountType,
     businessName,
     website,
+    noWebsite,
     businessDescription,
-    industry,
-    companySize,
-    businessLogo,
-    primaryBrandColor,
+    businessType,
+    targetAudience,
+    brandPersonality,
     onboardingComplete: true,
   };
 
-  // Remove legacy fields from old 5-step flow so new profiles stay clean
+  // Remove legacy fields from old flows so new profiles stay clean
   const legacyFieldsToUnset = {
     secondaryBrandColor: "",
     brandTone: "",
-    targetAudience: "",
     keyMessages: "",
     contentThemes: "",
     postingFrequency: "",
     timezone: "",
+    industry: "",
+    companySize: "",
+    businessLogo: "",
+    primaryBrandColor: "",
   };
 
   try {
