@@ -52,13 +52,13 @@ const buildMergedCaption = (post, backendPlatform) => {
 
   const hashtagsText = Array.isArray(platformData.hashtags)
     ? platformData.hashtags
-        .map((h) =>
-          h
-            ? `#${String(h).replace(/^#+/, "").replace(/\s+/g, "")}`
-            : null
-        )
-        .filter(Boolean)
-        .join(" ")
+      .map((h) =>
+        h
+          ? `#${String(h).replace(/^#+/, "").replace(/\s+/g, "")}`
+          : null
+      )
+      .filter(Boolean)
+      .join(" ")
     : "";
 
   const mergedCaption = `${caption} ${hashtagsText}`.trim();
@@ -182,7 +182,17 @@ const publishToPlatform = async ({ post, profile, platform }) => {
         access_token: creds.accessToken,
       });
 
-      await axios.post(url, params);
+      const fbResponse = await axios.post(url, params);
+      const fbPostId = fbResponse.data.id || fbResponse.data.post_id;
+
+      // Save Facebook post ID for analytics
+      if (fbPostId) {
+        post.metrics = post.metrics || {};
+        post.metrics.facebook = post.metrics.facebook || {};
+        post.metrics.facebook.postId = fbPostId;
+        await post.save();
+      }
+
       await markScheduleEntryPosted(post._id, "facebook");
       return { success: true, platform: "facebook" };
     }
@@ -200,7 +210,7 @@ const publishToPlatform = async ({ post, profile, platform }) => {
       );
 
       const publishUrl = `https://graph.facebook.com/${META_GRAPH_VERSION}/${creds.igBusinessId}/media_publish`;
-      await axios.post(
+      const igPublishResp = await axios.post(
         publishUrl,
         new URLSearchParams({
           creation_id: containerResp.data.id,
@@ -208,13 +218,23 @@ const publishToPlatform = async ({ post, profile, platform }) => {
         })
       );
 
+      const igMediaId = igPublishResp.data.id;
+
+      // Save Instagram media ID for analytics
+      if (igMediaId) {
+        post.metrics = post.metrics || {};
+        post.metrics.instagram = post.metrics.instagram || {};
+        post.metrics.instagram.postId = igMediaId;
+        await post.save();
+      }
+
       await markScheduleEntryPosted(post._id, "instagram");
       return { success: true, platform: "instagram" };
     }
 
     /* ---------------- LINKEDIN ---------------- */
     if (normalized === "linkedin") {
-      await axios.post(
+      const liResponse = await axios.post(
         LINKEDIN_UGC_POSTS_URL,
         {
           author: `urn:li:person:${creds.memberId}`,
@@ -236,6 +256,17 @@ const publishToPlatform = async ({ post, profile, platform }) => {
           },
         }
       );
+
+      // LinkedIn returns share URN in headers or response body
+      const shareUrn = liResponse.headers['x-restli-id'] || liResponse.data.id;
+
+      // Save LinkedIn share URN for analytics
+      if (shareUrn) {
+        post.metrics = post.metrics || {};
+        post.metrics.linkedin = post.metrics.linkedin || {};
+        post.metrics.linkedin.postId = shareUrn;
+        await post.save();
+      }
 
       await markScheduleEntryPosted(post._id, "linkedin");
       return { success: true, platform: "linkedin" };
@@ -266,8 +297,9 @@ const publishToPlatform = async ({ post, profile, platform }) => {
         profile.social.twitter.refreshToken = refreshToken;
         await profile.save();
 
+        let tweetResponse;
         try {
-          await refreshedClient.v2.tweet({ text: tweetText });
+          tweetResponse = await refreshedClient.v2.tweet({ text: tweetText });
         } catch (e) {
           if (e?.response?.status === 403) {
             throw new SocialPublishError(
@@ -277,6 +309,14 @@ const publishToPlatform = async ({ post, profile, platform }) => {
             );
           }
           throw e;
+        }
+
+        // Save Twitter tweet ID for analytics
+        if (tweetResponse?.data?.id) {
+          post.metrics = post.metrics || {};
+          post.metrics.twitter = post.metrics.twitter || {};
+          post.metrics.twitter.postId = tweetResponse.data.id;
+          await post.save();
         }
 
         await markScheduleEntryPosted(post._id, "twitter");
@@ -304,8 +344,9 @@ const publishToPlatform = async ({ post, profile, platform }) => {
         );
 
         // POST with form-encoded body
+        let twitterResponse;
         try {
-          await axios.post(
+          twitterResponse = await axios.post(
             url,
             new URLSearchParams({ status: tweetText }),
             {
@@ -324,6 +365,14 @@ const publishToPlatform = async ({ post, profile, platform }) => {
             );
           }
           throw e;
+        }
+
+        // Save Twitter tweet ID for analytics (v1.1 API)
+        if (twitterResponse?.data?.id_str) {
+          post.metrics = post.metrics || {};
+          post.metrics.twitter = post.metrics.twitter || {};
+          post.metrics.twitter.postId = twitterResponse.data.id_str;
+          await post.save();
         }
 
         await markScheduleEntryPosted(post._id, "twitter");

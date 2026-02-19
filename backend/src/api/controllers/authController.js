@@ -22,101 +22,7 @@ if (!admin.apps.length) {
   });
 }
 
-// Check which Brevo authentication method is available
-// Smart detection: If key starts with 'xkeysib-', it's a REST API key
-// If key starts with 'xsmtpsib-', it's an SMTP key
-
-let brevoApiKey = process.env.BREVO_API_KEY;
-let brevoSmtpKey = process.env.BREVO_SMTP_KEY;
-
-// Auto-detect: If BREVO_SMTP_KEY contains a REST API key, use it as BREVO_API_KEY
-if (brevoSmtpKey && brevoSmtpKey.trim().startsWith('xkeysib-')) {
-  console.warn("⚠️  WARNING: BREVO_SMTP_KEY contains a REST API key (starts with 'xkeysib-')");
-  console.warn("⚠️  Consider renaming it to BREVO_API_KEY in your .env file");
-  if (!brevoApiKey) {
-    brevoApiKey = brevoSmtpKey.trim();
-    console.log("✅ Auto-detected REST API key from BREVO_SMTP_KEY, using REST API method");
-  }
-}
-
-// Auto-detect: If BREVO_API_KEY contains an SMTP key, use it as BREVO_SMTP_KEY
-if (brevoApiKey && brevoApiKey.trim().startsWith('xsmtpsib-')) {
-  console.warn("⚠️  WARNING: BREVO_API_KEY contains an SMTP key (starts with 'xsmtpsib-')");
-  console.warn("⚠️  Consider renaming it to BREVO_SMTP_KEY in your .env file");
-  if (!brevoSmtpKey) {
-    brevoSmtpKey = brevoApiKey.trim();
-    brevoApiKey = null;
-    console.log("✅ Auto-detected SMTP key from BREVO_API_KEY, using SMTP method");
-  }
-}
-
-const USE_REST_API = !!brevoApiKey && brevoApiKey.trim().startsWith('xkeysib-');
-const USE_SMTP = !USE_REST_API && !!brevoSmtpKey && brevoSmtpKey.trim().startsWith('xsmtpsib-');
-
-// Create SMTP transporter if using SMTP method
-let smtpTransporter = null;
-
-if (USE_REST_API) {
-  const keyLength = brevoApiKey.length;
-  const keyPrefix = brevoApiKey.substring(0, 10);
-  console.log(`📧 Using Brevo REST API - Key loaded: Length=${keyLength}, Starts with: ${keyPrefix}...`);
-  console.log("✅ Brevo REST API ready (this is the recommended method)");
-} else if (USE_SMTP) {
-  const keyLength = brevoSmtpKey.length;
-  const keyPrefix = brevoSmtpKey.substring(0, 10);
-  console.log(`📧 Using Brevo SMTP - Key loaded: Length=${keyLength}, Starts with: ${keyPrefix}...`);
-
-  // Check for common issues
-  if (brevoSmtpKey.trim() !== brevoSmtpKey) {
-    console.warn("⚠️  WARNING: BREVO_SMTP_KEY has leading/trailing spaces! This will cause authentication to fail.");
-  }
-  if (brevoSmtpKey.includes('\n') || brevoSmtpKey.includes('\r')) {
-    console.warn("⚠️  WARNING: BREVO_SMTP_KEY contains newlines! This will cause authentication to fail.");
-  }
-
-  smtpTransporter = nodemailer.createTransport({
-    host: "smtp-relay.brevo.com",
-    port: 587,
-    secure: false,
-    auth: {
-      user: "apikey", // 🔥 MUST BE EXACT - do not change this
-      pass: brevoSmtpKey?.trim(), // Trim whitespace
-    },
-  });
-
-  // Verify SMTP connection on startup
-  smtpTransporter.verify((error, success) => {
-    if (error) {
-      console.error("❌ BREVO SMTP VERIFY FAILED:", error.message);
-      console.error("❌ Error code:", error.code);
-      if (error.code === 'EAUTH') {
-        console.error("❌ AUTHENTICATION FAILED - Consider using BREVO_API_KEY instead:");
-        console.error("   1. Go to https://app.brevo.com → Settings → SMTP & API");
-        console.error("   2. Click 'API Keys' tab");
-        console.error("   3. Copy the API key (starts with 'xkeysib-')");
-        console.error("   4. Add to .env: BREVO_API_KEY=xkeysib-...");
-      }
-    } else {
-      console.log("✅ BREVO SMTP READY - Connection verified successfully");
-    }
-  });
-} else {
-  if (process.env.BREVO_SMTP_KEY && !process.env.BREVO_SMTP_KEY.trim().startsWith('xsmtpsib-') && !process.env.BREVO_SMTP_KEY.trim().startsWith('xkeysib-')) {
-    console.error("❌ BREVO_SMTP_KEY format is invalid!");
-    console.error("   SMTP keys should start with 'xsmtpsib-'");
-    console.error("   REST API keys should start with 'xkeysib-'");
-    console.error(`   Your key starts with: ${process.env.BREVO_SMTP_KEY.trim().substring(0, 10)}...`);
-  } else if (process.env.BREVO_API_KEY && !process.env.BREVO_API_KEY.trim().startsWith('xkeysib-') && !process.env.BREVO_API_KEY.trim().startsWith('xsmtpsib-')) {
-    console.error("❌ BREVO_API_KEY format is invalid!");
-    console.error("   REST API keys should start with 'xkeysib-'");
-    console.error("   SMTP keys should start with 'xsmtpsib-'");
-    console.error(`   Your key starts with: ${process.env.BREVO_API_KEY.trim().substring(0, 10)}...`);
-  } else {
-    console.error("❌ Neither BREVO_API_KEY nor BREVO_SMTP_KEY is set!");
-    console.error("   Add BREVO_API_KEY to .env (recommended) or BREVO_SMTP_KEY");
-  }
-}
-
+const emailService = require('../../services/emailService');
 
 exports.sendSignupOtp = async (req, res) => {
   let { email } = req.body;
@@ -124,18 +30,6 @@ exports.sendSignupOtp = async (req, res) => {
 
   if (!email) {
     return res.status(400).json({ message: "Email is required" });
-  }
-
-  // Validate EMAIL_FROM is set
-  if (!process.env.EMAIL_FROM) {
-    console.error("❌ EMAIL_FROM environment variable is not set");
-    return res.status(500).json({ message: "Email configuration error" });
-  }
-
-  // Validate at least one Brevo key is set
-  if (!USE_REST_API && !USE_SMTP) {
-    console.error("❌ Neither BREVO_API_KEY nor BREVO_SMTP_KEY is set");
-    return res.status(500).json({ message: "Email service configuration error" });
   }
 
   try {
@@ -157,83 +51,20 @@ exports.sendSignupOtp = async (req, res) => {
 
     try {
       console.log(`📧 Attempting to send OTP to: ${email}`);
-      console.log(`📧 From: ${process.env.EMAIL_FROM}`);
+      const subject = "Your OTP Code";
+      const htmlContent = `<html><body><h1>Your OTP Code</h1><p>Your OTP is: <strong>${otp}</strong></p><p>This code will expire in 5 minutes.</p></body></html>`;
+      const textContent = `Your OTP is ${otp}. This code will expire in 5 minutes.`;
 
-      if (USE_REST_API) {
-        // Use Brevo REST API (recommended - works like Postman)
-        const emailFrom = process.env.EMAIL_FROM;
+      await emailService.sendEmail(email, subject, htmlContent, textContent);
+      return res.json({ message: "OTP sent successfully" });
 
-        // Parse EMAIL_FROM format: "Name <email@domain.com>" or "email@domain.com"
-        let senderName = "Generation Next";
-        let senderEmail = emailFrom;
-
-        const match = emailFrom.match(/^(.+?)\s*<(.+?)>$/);
-        if (match) {
-          senderName = match[1].trim().replace(/^["']|["']$/g, ''); // Remove quotes if present
-          senderEmail = match[2].trim();
-        } else if (emailFrom.includes('@')) {
-          senderEmail = emailFrom.trim();
-        }
-
-        const response = await axios.post(
-          'https://api.brevo.com/v3/smtp/email',
-          {
-            sender: {
-              name: senderName,
-              email: senderEmail
-            },
-            to: [
-              {
-                email: email
-              }
-            ],
-            subject: "Your OTP Code",
-            htmlContent: `<html><body><h1>Your OTP Code</h1><p>Your OTP is: <strong>${otp}</strong></p><p>This code will expire in 5 minutes.</p></body></html>`,
-            textContent: `Your OTP is ${otp}. This code will expire in 5 minutes.`
-          },
-          {
-            headers: {
-              'api-key': brevoApiKey || process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-
-        console.log(`✅ OTP email sent successfully via REST API to: ${email}`);
-        console.log(`✅ Message ID: ${response.data.messageId}`);
-      } else if (USE_SMTP && smtpTransporter) {
-        // Fallback to SMTP method
-        await smtpTransporter.sendMail({
-          from: process.env.EMAIL_FROM,
-          to: email,
-          subject: "Your OTP Code",
-          text: `Your OTP is ${otp}`,
-        });
-
-        console.log(`✅ OTP email sent successfully via SMTP to: ${email}`);
-      } else {
-        throw new Error("No email service configured");
-      }
     } catch (mailErr) {
-      console.error("❌ BREVO ERROR FULL:", mailErr);
-      console.error("❌ BREVO ERROR MESSAGE:", mailErr.message);
-      if (mailErr.response) {
-        console.error("❌ BREVO ERROR RESPONSE:", mailErr.response.data);
-        console.error("❌ BREVO ERROR STATUS:", mailErr.response.status);
-      }
-      if (mailErr.code) {
-        console.error("❌ BREVO ERROR CODE:", mailErr.code);
-      }
-      console.error("❌ EMAIL_FROM used:", process.env.EMAIL_FROM);
       console.error("❌ Email send failed:", mailErr);
       return res.status(500).json({
         message: "Email service unavailable",
         error: process.env.NODE_ENV !== 'production' ? mailErr.message : undefined
       });
     }
-
-    // ✅ THIS WAS MISSING
-    return res.json({ message: "OTP sent successfully" });
 
   } catch (err) {
     console.error("❌ General error in sendSignupOtp:", err);
@@ -366,7 +197,7 @@ exports.loginUser = async (req, res) => {
 
   } catch (error) {
     console.error(error.message);
-    res.status(500).send('Server Error');
+    res.status(500).json({ message: 'Server Error' });
   }
 };
 
@@ -488,5 +319,121 @@ exports.googleLogin = async (req, res) => {
   } catch (err) {
     console.error("Google login error:", err);
     return res.status(401).json({ message: "Google authentication failed" });
+  }
+};
+
+// =====================
+// PASSWORD RESET (OTP)
+// =====================
+
+exports.sendPasswordResetOtp = async (req, res) => {
+  let { email } = req.body;
+  email = email?.trim().toLowerCase();
+
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Generate OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await EmailOtp.findOneAndUpdate(
+      { email },
+      { otpHash, expiresAt, attempts: 0 },
+      { upsert: true }
+    );
+
+    // Send Email
+    try {
+      const subject = "Reset Your Password - OTP";
+      const htmlContent = `<html><body>
+              <h1>Password Reset Request</h1>
+              <p>You requested to reset your password.</p>
+              <p>Your OTP is: <strong>${otp}</strong></p>
+              <p>This code will expire in 10 minutes.</p>
+              <p>If you did not request this, please ignore this email.</p>
+            </body></html>`;
+      const textContent = `Your password reset OTP is ${otp}. Expires in 10 minutes.`;
+
+      await emailService.sendEmail(email, subject, htmlContent, textContent);
+      res.json({ message: "OTP sent successfully" });
+
+    } catch (mailErr) {
+      console.error("❌ Error sending reset OTP:", mailErr);
+      return res.status(500).json({ message: "Failed to send OTP" });
+    }
+
+  } catch (err) {
+    console.error("Error sending reset OTP:", err);
+    res.status(500).json({ message: "Failed to send OTP" });
+  }
+};
+
+exports.resetPasswordWithOtp = async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  try {
+    const record = await EmailOtp.findOne({ email });
+    if (!record) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    if (record.expiresAt < new Date()) {
+      await EmailOtp.deleteOne({ email });
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    if (record.attempts >= 5) {
+      await EmailOtp.deleteOne({ email });
+      return res.status(400).json({ message: "Too many attempts. Request a new OTP." });
+    }
+
+    const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
+    if (otpHash !== record.otpHash) {
+      record.attempts += 1;
+      await record.save();
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    // Check if user exists and prevent reusing old password
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if new password is same as old password (only if user has a password)
+    if (user.password) {
+      const isSamePassword = await bcrypt.compare(newPassword, user.password);
+      if (isSamePassword) {
+        return res.status(400).json({ message: "New password cannot be the same as your old password" });
+      }
+    }
+
+    // OTP Verified - Reset Password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update user password
+    user.password = hashedPassword;
+    await user.save();
+
+    await EmailOtp.deleteOne({ email });
+
+    res.json({ message: "Password reset successfully. You can now login with your new password." });
+
+  } catch (err) {
+    console.error("Error resetting password:", err);
+    res.status(500).json({ message: "Failed to reset password" });
   }
 };

@@ -50,7 +50,7 @@ const PreviewModal = ({ isOpen, onClose, posts, date }) => {
 
   const handleViewPost = () => {
     if (currentPost.postId) {
-      router.push(`/generatepost?id=${currentPost.postId}`);
+      router.push(`/post?id=${currentPost.postId}`);
     }
   };
 

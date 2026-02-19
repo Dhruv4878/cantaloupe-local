@@ -14,9 +14,14 @@ const socialRoutes = require('./api/routes/socialRoutes');
 const publicPlansRoutes = require('./api/routes/publicPlans');
 const subscriptionsRoutes = require('./api/routes/subscriptions');
 const paymentsRoutes = require('./api/routes/payments');
+const templateRoutes = require('./api/routes/templateRoutes');
+const uploadRoutes = require('./api/routes/uploadRoutes');
+const analyticsRoutes = require('./api/routes/analyticsRoutes');
 
 // SUPER ADMIN
 const superAdminRoutes = require('./superadmin/routes/superadmin.routes');
+const analyticsRoutesSuperAdmin = require('./superadmin/routes/analytics.routes');
+
 
 
 const app = express();
@@ -34,8 +39,9 @@ app.use(
 /* ----------------------------------------------------
    BODY PARSING
 ---------------------------------------------------- */
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Increase limit to handle base64 images (up to 15MB to account for base64 overhead)
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(cookieParser());
 
 /* ----------------------------------------------------
@@ -77,12 +83,15 @@ app.use('/api/profile', profileRoutes);
 app.use('/api', aiContentRoutes);
 app.use('/api', postRoutes);
 app.use('/api', socialRoutes);
+app.use('/api', templateRoutes);
+app.use('/api', uploadRoutes);
 
 // Public plans and subscription/payment endpoints
 app.use('/api/public', publicPlansRoutes);
 app.use('/public', publicPlansRoutes); // also expose '/public/plans' per spec
 app.use('/api', subscriptionsRoutes);
 app.use('/api', paymentsRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 /* ----------------------------------------------------
    SUPER ADMIN API (SEPARATE FROM USER API)
@@ -90,7 +99,10 @@ app.use('/api', paymentsRoutes);
    NEXT_PUBLIC_API_URL (which includes /api) will work without changes.
 ---------------------------------------------------- */
 app.use('/super-admin', ensureMongoConnection, superAdminRoutes);
+app.use('/super-admin', ensureMongoConnection, superAdminRoutes);
 app.use('/api/super-admin', ensureMongoConnection, superAdminRoutes);
+app.use('/api/super-admin/analytics', ensureMongoConnection, analyticsRoutesSuperAdmin);
+
 
 /* ----------------------------------------------------
    DEV-ONLY QUEUE DASHBOARD

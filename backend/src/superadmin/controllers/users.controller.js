@@ -2,8 +2,8 @@ const SuperAdminService = require("../services/superAdmin.service");
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const { sortBy, order, page, limit } = req.query;
-    const result = await SuperAdminService.getAllUsers({ sortBy, order, page, limit });
+    const { sortBy, order, page, limit, search, status, plan } = req.query;
+    const result = await SuperAdminService.getAllUsers({ sortBy, order, page, limit, search, status, plan });
 
     return res.status(200).json({
       message: "Users retrieved successfully",

@@ -6,6 +6,7 @@ import { auth } from "../../lib/firebase";
 import { useRouter } from "next/navigation";
 import GradientButton from "../GradientButton"; // adjust path if needed
 import axios from "axios";
+import ForgotPasswordModal from "../ForgotPasswordModal";
 
 // Google Icon
 const GoogleIcon = () => (
@@ -78,6 +79,7 @@ export default function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
   // ✅ Auto-check if user already logged in
   useEffect(() => {
@@ -139,7 +141,15 @@ export default function LoginForm() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const text = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(text);
+        } catch (e) {
+          // JSON parse failed, use the text content
+          throw new Error(text || response.statusText || "Login failed");
+        }
+        // JSON parsed successfully
         throw new Error(errorData.message || "Login failed");
       }
 
@@ -445,6 +455,15 @@ export default function LoginForm() {
                   className="w-full rounded-lg border border-white/15 bg-[#101024] px-3.5 py-2.5"
                   placeholder="••••••••"
                 />
+                <div className="text-right mt-1">
+                   <button
+                    type="button"
+                    onClick={() => setIsForgotPasswordOpen(true)}
+                    className="text-xs text-white/50 hover:text-white transition"
+                   >
+                     Forgot password?
+                   </button>
+                </div>
               </div>
 
               {error && (
@@ -485,6 +504,12 @@ export default function LoginForm() {
           </p>
         </div>
       </div>
+      
+      <ForgotPasswordModal
+        isOpen={isForgotPasswordOpen}
+        onClose={() => setIsForgotPasswordOpen(false)}
+        email={email}
+      />
     </div>
   );
 }

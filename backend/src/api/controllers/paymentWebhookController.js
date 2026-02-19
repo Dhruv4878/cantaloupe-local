@@ -4,6 +4,8 @@ const Transaction = require('../../models/Transaction');
 const User = require('../../models/userModel');
 const { CREDIT_PACKS } = require('./creditController');
 
+const emailService = require('../../services/emailService');
+
 // POST /api/webhook/payment
 async function paymentWebhook(req, res) {
   try {
@@ -73,12 +75,26 @@ async function paymentWebhook(req, res) {
             }
 
             if (subscriptionId) {
-              await subscriptionService.activateSubscription({
+              const activatedSub = await subscriptionService.activateSubscription({
                 subscriptionId,
                 paymentStatus: 'completed',
                 paymentMode: notes.payment_mode || 'monthly',
                 gateway: 'razorpay'
               });
+
+              // Send success email
+              if (activatedSub) {
+                try {
+                  const user = await User.findById(activatedSub.user_id);
+                  const plan = await require('../../models/Plan').findById(activatedSub.plan_id);
+                  if (user && plan) {
+                    const endDate = new Date(activatedSub.end_date).toLocaleDateString();
+                    await emailService.sendSubscriptionSuccessEmail(user, plan, endDate);
+                  }
+                } catch (emailErr) {
+                  console.error('Failed to send subscription email:', emailErr);
+                }
+              }
             }
           } else {
             // Fallback: create new transaction if no pending found
@@ -267,7 +283,8 @@ async function paymentWebhook(req, res) {
 
       // Process credit purchase if successful
       if (status === 'success') {
-        await processCreditPurchase(userId, packId, credits, payment);
+        const finalAmount = payment?.amount || 0; // Assume internal webhook sends Rupees
+        await processCreditPurchase(userId, packId, credits, payment, finalAmount);
       }
 
       return res.json({ ok: true });
@@ -380,6 +397,21 @@ async function paymentWebhook(req, res) {
         payment_status: activatedSub?.payment_status,
         end_date: activatedSub?.end_date
       });
+
+      // Send success email
+      if (activatedSub) {
+        try {
+          const user = await User.findById(activatedSub.user_id);
+          const plan = await require('../../models/Plan').findById(activatedSub.plan_id);
+          if (user && plan) {
+            const endDate = new Date(activatedSub.end_date).toLocaleDateString();
+            const orderId = payment?.razorpay_order_id || payment?.order_id || 'N/A';
+            await emailService.sendSubscriptionSuccessEmail(user, plan, endDate, orderId);
+          }
+        } catch (emailErr) {
+          console.error('Failed to send subscription email:', emailErr);
+        }
+      }
     } else {
       // Clean up pending subscription for failed/cancelled payments
       const UserSubscription = require('../../models/UserSubscription');
@@ -482,12 +514,13 @@ async function handleCreditPurchase(payload, status) {
 
   // If payment successful, add credits to user
   if (status === 'completed') {
-    await processCreditPurchase(userId, packId, credits, payload);
+    const amountInRupees = payload.amount ? payload.amount / 100 : 0; // Razorpay sends Paisa
+    await processCreditPurchase(userId, packId, credits, payload, amountInRupees);
   }
 }
 
 // Helper function to process successful credit purchase
-async function processCreditPurchase(userId, packId, credits, paymentData) {
+async function processCreditPurchase(userId, packId, credits, paymentData, finalAmount) {
   try {
     const user = await User.findById(userId);
     if (!user) {
@@ -503,6 +536,15 @@ async function processCreditPurchase(userId, packId, credits, paymentData) {
     await user.save();
 
     console.log(`Credits added successfully: User ${userId} now has ${newCreditLimit} credits (added ${credits})`);
+
+    // Send success email
+    try {
+      const orderId = paymentData.order_id || paymentData.razorpay_order_id || 'N/A';
+      await emailService.sendCreditPurchaseSuccessEmail(user, credits, finalAmount, orderId);
+    } catch (emailErr) {
+      console.error('Failed to send credit purchase email:', emailErr);
+    }
+
   } catch (error) {
     console.error('Error processing credit purchase:', error);
     throw error;

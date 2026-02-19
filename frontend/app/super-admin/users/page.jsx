@@ -1,72 +1,93 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Facebook, Instagram, Linkedin, Twitter, Eye, X, Calendar, CreditCard, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Eye, CheckCircle, XCircle, MoreVertical, Edit2, CreditCard, RefreshCw, X } from "lucide-react";
+import DataTable from "@/components/ui/admin/DataTable";
 
 export default function SuperAdminUsersPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSortFields, setSelectedSortFields] = useState([]);
-  const [sortDirection, setSortDirection] = useState("desc");
-  const [appliedSortFields, setAppliedSortFields] = useState([]);
-  const [appliedSortDirection, setAppliedSortDirection] = useState("desc");
-  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
+  // Pagination state
   // Pagination state
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [total, setTotal] = useState(0);
-  
+
+  // Filter State
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterPlan, setFilterPlan] = useState("all");
+  const [sortBy, setSortBy] = useState("createdAt");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [availablePlans, setAvailablePlans] = useState([]);
+
   // Transaction modal state
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [transactionLoading, setTransactionLoading] = useState(false);
-  const [transactionPagination, setTransactionPagination] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
-  
+
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
-  const fetchUsers = async (options = {}) => {
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setPage(1);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Fetch users
+  // Fetch users & plans
+  useEffect(() => {
+    fetchAvailablePlans();
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, page, limit, filterStatus, filterPlan, sortBy, sortOrder]);
+
+  const fetchAvailablePlans = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/super-admin/plans`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setAvailablePlans(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch plans", e);
+    }
+  };
+
+  const fetchUsers = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      const sortParam =
-        options.sortBy ??
-        (appliedSortFields.length > 0
-          ? appliedSortFields.join(",")
-          : selectedSortFields.length > 0
-          ? selectedSortFields.join(",")
-          : null);
-      const orderParam = options.order ?? appliedSortDirection ?? sortDirection;
-      if (sortParam) params.set("sortBy", sortParam);
-      if (sortParam && orderParam) params.set("order", orderParam);
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      
+      if (filterStatus !== "all") params.set("status", filterStatus);
+      if (filterPlan !== "all") params.set("plan", filterPlan);
+      
+      params.set("sortBy", sortBy);
+      params.set("order", sortOrder);
 
-      const pageParam = options.page ?? page;
-      const limitParam = options.limit ?? limit;
-      if (pageParam) params.set("page", String(pageParam));
-      if (limitParam) params.set("limit", String(limitParam));
-
-      const url = `${apiUrl}/super-admin/users${
-        params.toString() ? `?${params.toString()}` : ""
-      }`;
-
-      const res = await fetch(url, {
+      const res = await fetch(`${apiUrl}/super-admin/users?${params.toString()}`, {
         method: "GET",
         credentials: "include",
       });
 
-      if (!res.ok) {
-        console.error("Failed to fetch users");
-        setLoading(false);
-        return;
-      }
-
+      if (!res.ok) throw new Error("Failed to fetch users");
       const data = await res.json();
+      
       setUsers(data.users || []);
       setTotal(Number(data.count || 0));
-      setPage(Number(data.page || pageParam || 1));
-      setLimit(Number(data.limit || limitParam || limit));
     } catch (err) {
       console.error("Users fetch error:", err);
     } finally {
@@ -74,177 +95,96 @@ export default function SuperAdminUsersPage() {
     }
   };
 
-  const toggleActive = async (userId, currentlyActive) => {
-    const newActive = !currentlyActive;
-    setUsers((prev) =>
-      prev.map((u) => (u._id === userId ? { ...u, active: newActive } : u))
-    );
-
-    try {
-      const res = await fetch(`${apiUrl}/super-admin/users/${userId}/active`, {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active: !!newActive }),
-      });
-
-      if (!res.ok) {
-        setUsers((prev) =>
-          prev.map((u) =>
-            u._id === userId ? { ...u, active: currentlyActive } : u
-          )
-        );
-        return;
-      }
-      const data = await res.json();
-      setUsers((prev) =>
-        prev.map((u) => (u._id === userId ? { ...u, ...data.user } : u))
-      );
-    } catch (err) {
-      console.error("Toggle active error:", err);
-      setUsers((prev) =>
-        prev.map((u) =>
-          u._id === userId ? { ...u, active: currentlyActive } : u
-        )
-      );
-    }
-  };
+  // --- ACTIONS ---
 
   const togglePlanActive = async (userId, currentlyActive) => {
+    // Optimistic update
     const newActive = !currentlyActive;
-    
-    // Optimistically update UI
-    setUsers((prev) =>
-      prev.map((u) => 
-        u._id === userId 
-          ? { 
-              ...u, 
-              planInfo: { 
-                ...u.planInfo, 
-                isActive: newActive 
-              } 
-            } 
-          : u
-      )
-    );
+    setUsers(prev => prev.map(u => u._id === userId ? { ...u, planInfo: { ...u.planInfo, isActive: newActive } } : u));
 
     try {
       const res = await fetch(`${apiUrl}/super-admin/users/${userId}/plan-active`, {
         method: "PUT",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planActive: !!newActive }),
+        body: JSON.stringify({ planActive: newActive }),
+        credentials: "include",
       });
 
-      if (!res.ok) {
-        // Revert on error
-        setUsers((prev) =>
-          prev.map((u) =>
-            u._id === userId 
-              ? { 
-                  ...u, 
-                  planInfo: { 
-                    ...u.planInfo, 
-                    isActive: currentlyActive 
-                  } 
-                } 
-              : u
-          )
-        );
-        const errorData = await res.json().catch(() => ({}));
-        alert(errorData.message || "Failed to update plan status");
-        return;
-      }
-      
+      if (!res.ok) throw new Error("Failed to update");
       const data = await res.json();
-      console.log("Plan status updated:", data);
+      console.log("Plan updated:", data);
     } catch (err) {
-      console.error("Toggle plan active error:", err);
-      // Revert on error
-      setUsers((prev) =>
-        prev.map((u) =>
-          u._id === userId 
-            ? { 
-                ...u, 
-                planInfo: { 
-                  ...u.planInfo, 
-                  isActive: currentlyActive 
-                } 
-              } 
-            : u
-        )
-      );
-      alert("Failed to update plan status");
+      console.error("Error toggling plan:", err);
+      // Revert
+      setUsers(prev => prev.map(u => u._id === userId ? { ...u, planInfo: { ...u.planInfo, isActive: currentlyActive } } : u));
+      if (typeof window !== 'undefined') window.alert("Failed to update plan status");
+    }
+  };
+
+  const toggleUserActive = async (userId, currentlyActive) => {
+    // Optimistic update
+    const newActive = !currentlyActive;
+    setUsers(prev => prev.map(u => u._id === userId ? { ...u, active: newActive } : u));
+
+    try {
+      const res = await fetch(`${apiUrl}/super-admin/users/${userId}/active`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: newActive }),
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error("Failed to update account status");
+      const data = await res.json();
+      console.log("User status updated:", data);
+    } catch (err) {
+      console.error("Error toggling user status:", err);
+      // Revert
+      setUsers(prev => prev.map(u => u._id === userId ? { ...u, active: currentlyActive } : u));
+      if (typeof window !== 'undefined') window.alert("Failed to update account status");
     }
   };
 
   const adjustCredit = async (userId, currentLimit) => {
-    const answer = window.prompt(
-      "Set new credit limit for user:",
-      String(currentLimit ?? 0)
-    );
+    const answer = window.prompt("Set new credit limit:", String(currentLimit ?? 0));
     if (answer === null) return;
-
+    
     const parsed = Number(answer);
     if (isNaN(parsed) || parsed < 0) {
-      alert("Please enter a non-negative number for credit limit.");
+      alert("Invalid credit limit");
       return;
     }
-
-    setUsers((prev) =>
-      prev.map((u) => (u._id === userId ? { ...u, creditLimit: parsed } : u))
-    );
 
     try {
       const res = await fetch(`${apiUrl}/super-admin/users/${userId}/credit`, {
         method: "PUT",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ creditLimit: parsed }),
+        credentials: "include",
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert(err.message || "Failed to update user credit");
-        fetchUsers();
-        return;
-      }
+      if (!res.ok) throw new Error("Failed to update credit");
       const data = await res.json();
-      setUsers((prev) =>
-        prev.map((u) => (u._id === userId ? { ...u, ...data.user } : u))
-      );
+      setUsers(prev => prev.map(u => u._id === userId ? { ...u, ...data.user } : u));
     } catch (err) {
-      console.error("Adjust credit error:", err);
-      alert("Failed to update credit limit");
-      fetchUsers();
+      console.error("Credit update error:", err);
+      alert("Failed to update credit");
     }
   };
 
-  const fetchUserTransactions = async (userId, transactionPage = 1) => {
+  const fetchUserTransactions = async (userId) => {
     try {
       setTransactionLoading(true);
-      const params = new URLSearchParams();
-      params.set("page", String(transactionPage));
-      params.set("limit", "10");
-
-      const url = `${apiUrl}/super-admin/users/${userId}/transactions?${params.toString()}`;
-
-      const res = await fetch(url, {
-        method: "GET",
+      const res = await fetch(`${apiUrl}/super-admin/users/${userId}/transactions?page=1&limit=10`, {
         credentials: "include",
       });
-
-      if (!res.ok) {
-        console.error("Failed to fetch user transactions");
-        return;
+      if (res.ok) {
+        const data = await res.json();
+        setTransactions(data.transactions || []);
+        setSelectedUser(data.user || null);
       }
-
-      const data = await res.json();
-      setTransactions(data.transactions || []);
-      setTransactionPagination(data.pagination || {});
-      setSelectedUser(data.user || null);
     } catch (err) {
-      console.error("Transaction fetch error:", err);
+      console.error("Transaction error:", err);
     } finally {
       setTransactionLoading(false);
     }
@@ -256,1002 +196,344 @@ export default function SuperAdminUsersPage() {
     fetchUserTransactions(userId);
   };
 
-  const closeTransactionModal = () => {
-    setShowTransactionModal(false);
-    setSelectedUserId(null);
-    setTransactions([]);
-    setTransactionPagination({});
-    setSelectedUser(null);
-  };
-
-  const toggleField = (field) => {
-    setSelectedSortFields((prev) =>
-      prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]
-    );
-  };
-
-  const applySort = () => {
-    const sortByParam = selectedSortFields.join(",");
-    setAppliedSortFields(selectedSortFields);
-    setAppliedSortDirection(sortDirection);
-    setPage(1);
-
-    if (!sortByParam) {
-      fetchUsers({ page: 1, limit });
-    } else {
-      fetchUsers({ sortBy: sortByParam, order: sortDirection, page: 1, limit });
+  // --- COLUMNS DEF ---
+  const columns = [
+    {
+      header: "User",
+      accessor: "name",
+      render: (row) => (
+        <div className="flex flex-col">
+          <span className="font-medium text-gray-900">
+            {row.firstName || row.lastName ? `${row.firstName} ${row.lastName}` : row.name || "N/A"}
+          </span>
+          <span className="text-xs text-gray-400">{row.email}</span>
+        </div>
+      )
+    },
+    {
+      header: "Total Posts",
+      accessor: "postsGenerated",
+      render: (row) => (
+        <span className="font-medium text-gray-900 text-center block w-full">{row.postsGenerated || 0}</span>
+      )
+    },
+    {
+      header: "Plan Usage (Mo/Limit)",
+      accessor: "monthlyUsage",
+      render: (row) => (
+        <div className="text-sm">
+           <span className="font-medium text-gray-900">{row.monthlyPosts || 0}</span>
+           <span className="text-gray-400 mx-1">/</span>
+           <span className="text-gray-500">
+             {row.planInfo?.monthlyLimit > 0 ? row.planInfo.monthlyLimit : "∞"}
+           </span>
+        </div>
+      )
+    },
+    {
+      header: "Account",
+      accessor: "accountStatus",
+      render: (row) => {
+        const isActive = row.active !== false; // Default to true if undefined
+        
+        return (
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-semibold ${isActive ? "text-green-600" : "text-red-600"}`}>
+              {isActive ? "Active" : "Disabled"}
+            </span>
+            <button 
+              onClick={(e) => { e.stopPropagation(); toggleUserActive(row._id, isActive); }}
+              className={`
+                relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2
+                ${isActive ? 'bg-green-500' : 'bg-gray-300'}
+              `}
+              title={isActive ? "Disable Account" : "Enable Account"}
+            >
+              <span
+                className={`
+                  inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform
+                  ${isActive ? 'translate-x-4' : 'translate-x-1'}
+                `}
+              />
+            </button>
+          </div>
+        );
+      }
+    },
+    {
+      header: "Plan",
+      accessor: "plan",
+      render: (row) => {
+        const planName = row.currentPlanName || row.planInfo?.planName || "Free";
+        const isActive = row.planInfo?.isActive !== false;
+        
+        return (
+          <div className="flex items-center gap-3">
+             <div className="flex flex-col">
+              <span className={`text-sm font-medium ${isActive ? "text-green-600" : "text-gray-500"}`}>
+                {planName}
+              </span>
+            </div>
+            {/* Toggle Switch */}
+            <button 
+              onClick={(e) => { e.stopPropagation(); togglePlanActive(row._id, isActive); }}
+              className={`
+                relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                ${isActive ? 'bg-blue-600' : 'bg-gray-200'}
+              `}
+              title={isActive ? "Deactivate Plan" : "Activate Plan"}
+            >
+              <span
+                className={`
+                  inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform
+                  ${isActive ? 'translate-x-4' : 'translate-x-1'}
+                `}
+              />
+            </button>
+          </div>
+        );
+      }
+    },
+    {
+      header: "Credits",
+      accessor: "credits",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">
+            {row.creditsUsed || 0} / {row.creditLimit || 0}
+          </span>
+          <button 
+            onClick={(e) => { e.stopPropagation(); adjustCredit(row._id, row.creditLimit); }}
+            className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-blue-600"
+            title="Edit Credit Limit"
+          >
+            <Edit2 size={14} />
+          </button>
+        </div>
+      )
+    },
+    {
+      header: "Joined",
+      accessor: "createdAt",
+      render: (row) => (
+        <span className="text-xs text-gray-500">
+          {new Date(row.createdAt).toLocaleDateString()}
+        </span>
+      )
+    },
+    {
+      header: "Actions",
+      accessor: "actions",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={(e) => { e.stopPropagation(); handleViewTransactions(row._id); }}
+            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            title="View Transactions"
+          >
+            <CreditCard size={18} />
+          </button>
+        </div>
+      )
     }
-    setShowSortDropdown(false);
-  };
-
-  const clearSort = () => {
-    setSelectedSortFields([]);
-    setAppliedSortFields([]);
-    setSortDirection("desc");
-    setAppliedSortDirection("desc");
-    setPage(1);
-    fetchUsers({ page: 1, limit });
-    setShowSortDropdown(false);
-  };
-
-  useEffect(() => {
-    fetchUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  if (loading) {
-    return <div style={{ padding: "24px" }}>Loading users...</div>;
-  }
+  ];
 
   return (
-    <div>
-      {/* GLOBAL STYLES & MEDIA QUERIES */}
-      <style>{`
-        /* Toggle Switch Styles */
-        .toggle-switch {
-          position: relative;
-          display: inline-block;
-          width: 48px;
-          height: 26px;
-        }
-        .toggle-switch input {
-          opacity: 0;
-          width: 0;
-          height: 0;
-        }
-        .slider {
-          position: absolute;
-          cursor: pointer;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background-color: #e4e4e7;
-          transition: .3s;
-          border-radius: 34px;
-        }
-        .slider:before {
-          position: absolute;
-          content: "";
-          height: 20px;
-          width: 20px;
-          left: 3px;
-          bottom: 3px;
-          background-color: white;
-          transition: .3s;
-          border-radius: 50%;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-        input:checked + .slider {
-          background-color: #000000;
-        }
-        input:checked + .slider:before {
-          transform: translateX(22px);
-        }
-
-        /* --- RESPONSIVE LAYOUT CLASSES --- */
-        
-        .page-container {
-          max-width: 1400px;
-          width: 100%;
-          margin: 0 auto;
-          padding: 0 24px;
-        }
-
-        .header-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: 20px;
-          margin-bottom: 20px;
-        }
-        
-        .controls-row {
-          display: flex;
-          gap: 12px;
-          align-items: center;
-        }
-
-        .pagination-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: 20px;
-          padding-top: 15px;
-          border-top: 1px solid #eee;
-        }
-
-        /* Mobile Adjustments (Screens smaller than 768px) */
-        @media (max-width: 768px) {
-          .page-container {
-            padding: 0 16px;
-          }
-
-          .header-row {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 16px;
-          }
-
-          .controls-row {
-            width: 100%;
-            justify-content: space-between;
-          }
-
-          .pagination-row {
-            flex-direction: column;
-            gap: 16px;
-            align-items: center;
-            text-align: center;
-          }
-        }
-      `}</style>
-
-      <div className="page-container">
-        {/* --- HEADER ROW --- */}
-        <div className="header-row">
-          <h1 style={{ fontSize: "1.8rem", fontWeight: "600", margin: 0 }}>
-            All Users
-          </h1>
-
-          <div className="controls-row">
-            {/* Show Rows */}
-            <div
-              style={{
-                background: "#fff",
-                padding: "8px 12px",
-                borderRadius: "8px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <label
-                style={{
-                  fontSize: "0.9rem",
-                  color: "#444",
-                  marginRight: "8px",
-                  fontWeight: "500",
-                }}
-              >
-                Rows:
-              </label>
-              <select
-                value={limit}
-                onChange={(e) => {
-                  const newLimit = Number(e.target.value);
-                  setLimit(newLimit);
-                  setPage(1);
-                  fetchUsers({ page: 1, limit: newLimit });
-                }}
-                style={{
-                  padding: "4px",
-                  borderRadius: "4px",
-                  border: "1px solid #ddd",
-                  cursor: "pointer",
-                }}
-              >
-                {/* <option value={10}>10</option>
-                <option value={20}>20</option> */}
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-                <option value={500}>500</option>
-              </select>
-            </div>
-
-            {/* Sort Control */}
-            <div style={{ position: "relative" }}>
-              <button
-                onClick={() => setShowSortDropdown((s) => !s)}
-                style={{
-                  padding: "8px 16px",
-                  borderRadius: "8px",
-                  border: "none",
-                  background: "#fff",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  fontWeight: "500",
-                  color: "#333",
-                }}
-              >
-                <span>Sort by</span>
-                <span>▾</span>
-              </button>
-
-              <div
-                style={{
-                  position: "absolute",
-                  top: "100%",
-                  right: 0,
-                  marginTop: "4px",
-                  fontSize: "0.75rem",
-                  color: "#666",
-                  whiteSpace: "nowrap",
-                  textAlign: "right",
-                  pointerEvents: "none",
-                }}
-              >
-                {appliedSortFields.length > 0 ? (
-                  <span>
-                    {appliedSortFields.join(", ")} ({appliedSortDirection})
-                  </span>
-                ) : null}
-              </div>
-
-              {showSortDropdown && (
-                <div
-                  style={{
-                    position: "absolute",
-                    right: 0,
-                    top: "calc(100% + 8px)",
-                    background: "#fff",
-                    border: "1px solid #ddd",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                    borderRadius: "6px",
-                    padding: "12px",
-                    zIndex: 50,
-                    minWidth: "220px",
-                    textAlign: "left",
-                  }}
-                >
-                  <div style={{ marginBottom: "8px", fontWeight: 600 }}>
-                    Fields
-                  </div>
-                  {["name", "postsGenerated", "creditsUsed", "monthlyPosts", "currentPlanPosts", "lastUsed"].map((field) => (
-                    <label
-                      key={field}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        marginBottom: "6px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedSortFields.includes(field)}
-                        onChange={() => toggleField(field)}
-                      />
-                      {field === "postsGenerated" ? "Total Posts" :
-                       field === "creditsUsed" ? "Credits Used" :
-                       field === "monthlyPosts" ? "Overall Monthly" :
-                       field === "currentPlanPosts" ? "Current Plan Usage" :
-                       field.charAt(0).toUpperCase() + field.slice(1)}
-                    </label>
-                  ))}
-
-                  <div style={{ marginTop: "12px" }}>
-                    <div style={{ marginBottom: "6px", fontWeight: 600 }}>
-                      Direction
-                    </div>
-                    <select
-                      value={sortDirection}
-                      onChange={(e) => setSortDirection(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "6px",
-                        borderRadius: "4px",
-                        border: "1px solid #ddd",
-                      }}
-                    >
-                      <option value="desc">Descending</option>
-                      <option value="asc">Ascending</option>
-                    </select>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "8px",
-                      marginTop: "16px",
-                      justifyContent: "flex-end",
-                    }}
-                  >
-                    <button
-                      onClick={clearSort}
-                      style={{
-                        padding: "6px 10px",
-                        background: "none",
-                        border: "1px solid #ddd",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Clear
-                    </button>
-                    <button
-                      onClick={applySort}
-                      style={{
-                        padding: "6px 10px",
-                        background: "#111",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Apply
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+    <>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
+            <p className="text-sm text-gray-500">Manage user accounts, plans, and credits</p>
           </div>
-        </div>
-
-        {/* --- INFO BOX --- */}
-        <div style={{
-          background: "#f8f9fa",
-          border: "1px solid #e9ecef",
-          borderRadius: "8px",
-          padding: "16px",
-          marginBottom: "20px",
-          fontSize: "0.85rem",
-          color: "#495057"
-        }}>
-          <div style={{ fontWeight: "600", marginBottom: "8px", color: "#212529" }}>
-            📊 Column Explanations:
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "12px" }}>
-            <div>
-              <strong>Overall Monthly:</strong> Total posts generated this calendar month regardless of plan changes
-            </div>
-            <div>
-              <strong>Current Plan Usage:</strong> Posts generated on current active plan (resets when plan changes)
-            </div>
-            <div>
-              <strong>Total Posts:</strong> All posts ever generated by the user
-            </div>
-            <div>
-              <strong>Credits Used:</strong> Posts generated using lifetime credits (backup system)
-            </div>
-            <div>
-              <strong>Total Posts:</strong> All-time posts generated by the user
-            </div>
-            <div>
-              <strong>Credits Used:</strong> Posts generated using credit system (backup for monthly plans, primary for free users)
-            </div>
-            <div>
-              <strong>Credit Limit:</strong> Maximum credits available (backup limit for monthly plans, primary limit for free users)
-            </div>
-          </div>
-        </div>
-
-        {/* --- MAIN TABLE CONTAINER --- */}
-        <div
-          style={{
-            background: "#fff",
-            padding: "20px",
-            borderRadius: "10px",
-            boxShadow: "0 0 10px rgba(0,0,0,0.08)",
-            overflowX: "auto", // Keeps table scrollable on small screens
-          }}
-        >
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              minWidth: "1200px", // Increased for additional columns
-            }}
+          <button 
+             onClick={() => { setPage(1); fetchUsers(); }} 
+             disabled={loading}
+             className="p-2 sm:px-4 sm:py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors disabled:opacity-50"
           >
-            <thead>
-              <tr style={{ background: "#f8f9fa", textAlign: "left" }}>
-                <th style={thStyle}>#</th>
-                <th style={thStyle}>Name</th>
-                <th style={thStyle}>Email</th>
-                <th style={thStyle}>Plan</th>
-                <th style={thStyle}>Plan Active</th>
-                <th style={thStyle}>Overall Monthly</th>
-                <th style={thStyle}>Current Plan Usage</th>
-                <th style={thStyle}>Total Posts</th>
-                <th style={thStyle}>Credits Used</th>
-                <th style={thStyle}>Credit Limit</th>
-                <th style={thStyle}>Platforms</th>
-                <th style={thStyle}>Actions</th>
-                <th style={thStyle}>User Active</th>
-                <th style={thStyle}>Last Used</th>
-                <th style={thStyle}>Created</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {users.length === 0 && (
-                <tr>
-                  <td
-                    colSpan="13"
-                    style={{
-                      textAlign: "center",
-                      padding: "40px",
-                      color: "#666",
-                    }}
-                  >
-                    No users found.
-                  </td>
-                </tr>
-              )}
-
-              {users.map((u, i) => {
-                const fn = u.firstName ?? u.first_name;
-                const ln = u.lastName ?? u.last_name;
-                const displayName =
-                  fn || ln ? `${fn ?? ""} ${ln ?? ""}`.trim() : u.name || "N/A";
-
-                // Plan information
-                const planInfo = u.planInfo || {};
-                const planName = planInfo.planName || "Free";
-                // Show toggle if user has a monthly plan (even if suspended)
-                const isMonthlyPlan = u.hasMonthlyPlan || u.hasActiveMonthlyPlan || false;
-                const isPlanActive = planInfo.isActive !== false; // Default to true for Free plans
-                const overallMonthlyPosts = u.monthlyPosts || 0; // Calendar month posts
-                const currentPlanPosts = u.currentPlanPosts || 0; // Subscription-based posts
-                const monthlyLimit = planInfo.monthlyLimit || 0;
-                const totalPosts = u.postsGenerated || 0;
-                const creditsUsed = u.creditsUsed || 0;
-                const creditLimit = u.creditLimit ?? 0;
-
-                return (
-                  <tr key={u._id} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={tdStyle}>{(page - 1) * limit + i + 1}</td>
-                    <td style={{ ...tdStyle, fontWeight: 500 }}>
-                      {displayName}
-                    </td>
-                    <td style={tdStyle}>{u.email}</td>
-                    
-                    {/* Plan Column */}
-                    <td style={tdStyle}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                        <span style={{ 
-                          fontWeight: 500, 
-                          color: isMonthlyPlan && isPlanActive ? "#059669" : "#6b7280" 
-                        }}>
-                          {planName}
-                        </span>
-                        <span style={{ 
-                          fontSize: "0.75rem", 
-                          color: isMonthlyPlan && isPlanActive ? "#059669" : "#9ca3af" 
-                        }}>
-                          {isMonthlyPlan ? (isPlanActive ? "Active" : "Suspended") : "Free Tier"}
-                        </span>
-                      </div>
-                    </td>
-                    
-                    {/* Plan Active Toggle */}
-                    <td style={tdStyle}>
-                      {isMonthlyPlan ? (
-                        <label className="toggle-switch">
-                          <input
-                            type="checkbox"
-                            checked={isPlanActive}
-                            onChange={() => togglePlanActive(u._id, isPlanActive)}
-                          />
-                          <span className="slider"></span>
-                        </label>
-                      ) : (
-                        <span style={{ color: "#9ca3af", fontSize: "0.85rem" }}>—</span>
-                      )}
-                    </td>
-                    
-                    {/* Overall Monthly Posts Column */}
-                    <td style={tdStyle}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                        <span style={{ fontWeight: 500 }}>
-                          {overallMonthlyPosts}
-                        </span>
-                        <span style={{ 
-                          fontSize: "0.75rem", 
-                          color: "#6b7280" 
-                        }}>
-                          Calendar Month
-                        </span>
-                      </div>
-                    </td>
-                    
-                    {/* Current Plan Usage Column */}
-                    <td style={tdStyle}>
-                      {isMonthlyPlan && isPlanActive ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                          <span style={{ fontWeight: 500 }}>
-                            {currentPlanPosts} / {monthlyLimit}
-                          </span>
-                          <span style={{ 
-                            fontSize: "0.75rem", 
-                            color: "#6b7280" 
-                          }}>
-                            Current Plan
-                          </span>
-                          <div style={{ 
-                            width: "60px", 
-                            height: "4px", 
-                            backgroundColor: "#e5e7eb", 
-                            borderRadius: "2px",
-                            overflow: "hidden"
-                          }}>
-                            <div style={{
-                              width: `${Math.min((currentPlanPosts / Math.max(monthlyLimit, 1)) * 100, 100)}%`,
-                              height: "100%",
-                              backgroundColor: currentPlanPosts >= monthlyLimit ? "#ef4444" : "#3b82f6",
-                              transition: "width 0.3s ease"
-                            }} />
-                          </div>
-                        </div>
-                      ) : isMonthlyPlan && !isPlanActive ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                          <span style={{ fontWeight: 500, color: "#9ca3af" }}>
-                            Suspended
-                          </span>
-                          <span style={{ 
-                            fontSize: "0.75rem", 
-                            color: "#9ca3af" 
-                          }}>
-                            Plan Inactive
-                          </span>
-                        </div>
-                      ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                          <span style={{ fontWeight: 500, color: "#9ca3af" }}>
-                            —
-                          </span>
-                          <span style={{ 
-                            fontSize: "0.75rem", 
-                            color: "#9ca3af" 
-                          }}>
-                            No Plan Limit
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                    
-                    {/* Total Posts Column */}
-                    <td style={tdStyle}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                        <span style={{ 
-                          fontWeight: 500,
-                          color: totalPosts > 0 ? "#2563eb" : "#6b7280"
-                        }}>
-                          {totalPosts}
-                        </span>
-                        <span style={{ 
-                          fontSize: "0.75rem", 
-                          color: "#6b7280" 
-                        }}>
-                          Total Generated
-                        </span>
-                      </div>
-                    </td>
-                    
-                    {/* Credits Used Column */}
-                    <td style={tdStyle}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                        <span style={{ 
-                          fontWeight: 500,
-                          color: creditsUsed > 0 ? "#dc2626" : "#059669"
-                        }}>
-                          {creditsUsed}
-                        </span>
-                        <span style={{ 
-                          fontSize: "0.75rem", 
-                          color: "#6b7280" 
-                        }}>
-                          {isMonthlyPlan && isPlanActive ? "Backup Credits" : "Primary Credits"}
-                        </span>
-                      </div>
-                    </td>
-                    
-                    {/* Credit Limit Column */}
-                    <td
-                      style={{
-                        ...tdStyle,
-                        cursor: "pointer",
-                        color: "#2563eb",
-                      }}
-                      title="Click to edit credit limit"
-                      onClick={() => adjustCredit(u._id, creditLimit)}
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                        <span style={{ fontWeight: 500 }}>
-                          {creditLimit}
-                        </span>
-                        <span style={{ 
-                          fontSize: "0.75rem", 
-                          color: "#2563eb" 
-                        }}>
-                          {isMonthlyPlan && isPlanActive ? "Backup Limit" : "Primary Limit"}
-                        </span>
-                      </div>
-                    </td>
-                    
-                    <td style={tdStyle}>
-                      {Array.isArray(u.connectedPlatforms) &&
-                      u.connectedPlatforms.length > 0 ? (
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "8px",
-                            alignItems: "center",
-                          }}
-                        >
-                          {u.connectedPlatforms.includes("facebook") && (
-                            <Facebook size={16} />
-                          )}
-                          {u.connectedPlatforms.includes("instagram") && (
-                            <Instagram size={16} />
-                          )}
-                          {u.connectedPlatforms.includes("linkedin") && (
-                            <Linkedin size={16} />
-                          )}
-                          {u.connectedPlatforms.includes("twitter") && (
-                            <Twitter size={16} />
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ color: "#ccc" }}>—</span>
-                      )}
-                    </td>
-                    
-                    {/* Actions Column */}
-                    <td style={tdStyle}>
-                      <button
-                        onClick={() => handleViewTransactions(u._id)}
-                        style={{
-                          background: "none",
-                          border: "1px solid #ddd",
-                          borderRadius: "4px",
-                          padding: "6px 8px",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "#666",
-                          fontSize: "0.85rem"
-                        }}
-                        title="View Transactions"
-                      >
-                        <Eye size={14} />
-                      </button>
-                    </td>
-
-                    {/* User Active Toggle */}
-                    <td style={tdStyle}>
-                      <label className="toggle-switch">
-                        <input
-                          type="checkbox"
-                          checked={u.active !== false}
-                          onChange={() =>
-                            toggleActive(u._id, u.active !== false)
-                          }
-                        />
-                        <span className="slider"></span>
-                      </label>
-                    </td>
-
-                    <td style={{ ...tdStyle, fontSize: "0.85rem" }}>
-                      {u.lastUsedAt
-                        ? new Date(u.lastUsedAt).toLocaleString()
-                        : "—"}
-                    </td>
-
-                    <td style={{ ...tdStyle, fontSize: "0.85rem" }}>
-                      {new Date(u.createdAt).toLocaleDateString()}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {/* --- PAGINATION --- */}
-          <div className="pagination-row">
-            <div style={{ fontSize: "0.85rem", color: "#666" }}>
-              Showing {total === 0 ? 0 : (page - 1) * limit + 1} -{" "}
-              {Math.min(page * limit, total)} of {total} results
-            </div>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <button
-                onClick={() => {
-                  if (page > 1) {
-                    const np = page - 1;
-                    setPage(np);
-                    fetchUsers({ page: np, limit });
-                  }
-                }}
-                disabled={page <= 1}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "4px",
-                  border: "1px solid #ddd",
-                  background: page <= 1 ? "#f5f5f5" : "#fff",
-                  cursor: page <= 1 ? "not-allowed" : "pointer",
-                  color: page <= 1 ? "#aaa" : "#333",
-                }}
-              >
-                Previous
-              </button>
-              <span style={{ fontSize: "0.9rem", fontWeight: 500 }}>
-                Page {page}
-              </span>
-              <button
-                onClick={() => {
-                  const totalPages = Math.max(1, Math.ceil(total / limit));
-                  if (page < totalPages) {
-                    const np = page + 1;
-                    setPage(np);
-                    fetchUsers({ page: np, limit });
-                  }
-                }}
-                disabled={page >= Math.max(1, Math.ceil(total / limit))}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "4px",
-                  border: "1px solid #ddd",
-                  background:
-                    page >= Math.ceil(total / limit) ? "#f5f5f5" : "#fff",
-                  cursor:
-                    page >= Math.ceil(total / limit)
-                      ? "not-allowed"
-                      : "pointer",
-                  color: page >= Math.ceil(total / limit) ? "#aaa" : "#333",
-                }}
-              >
-                Next
-              </button>
-            </div>
-          </div>
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            <span className="hidden sm:inline">Refresh Data</span>
+          </button>
         </div>
+
+        <DataTable 
+          title="All Users"
+          columns={columns}
+          data={users}
+          searchPlaceholder="Search by name or email..."
+          onSearch={(term) => setSearchTerm(term)}
+          
+          // Server-side Pagination Props
+          manualPagination={true}
+          totalItems={total}
+          currentPage={page}
+          itemsPerPage={limit}
+          onPageChange={(newPage) => setPage(newPage)}
+          
+          // Filters
+          filters={
+            <>
+               <select 
+                 value={filterStatus}
+                 onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
+                 className="px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+               >
+                 <option value="all">All Status</option>
+                 <option value="active">Active</option>
+                 <option value="disabled">Disabled</option>
+               </select>
+
+               <select 
+                 value={filterPlan}
+                 onChange={(e) => { setFilterPlan(e.target.value); setPage(1); }}
+                 className="px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[150px]"
+               >
+                 <option value="all">All Plans</option>
+                 <option value="free">Free</option>
+                 {availablePlans.filter(p => p.name.toLowerCase() !== 'free').map(p => (
+                   <option key={p._id} value={p._id}>{p.name}</option>
+                 ))}
+                 <optgroup label="Credit Packs">
+                   <option value="starter">Starter Pack (10)</option>
+                   <option value="growth">Growth Pack (30)</option>
+                   <option value="power">Power Pack (50)</option>
+                   <option value="agency">Agency Pack (100)</option>
+                 </optgroup>
+               </select>
+
+               <select 
+                 value={`${sortBy}-${sortOrder}`}
+                 onChange={(e) => { 
+                    const [field, order] = e.target.value.split("-");
+                    setSortBy(field);
+                    setSortOrder(order);
+                    setPage(1);
+                 }}
+                 className="px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+               >
+                 <option value="createdAt-desc">Newest First</option>
+                 <option value="createdAt-asc">Oldest First</option>
+                 <option value="postsGenerated-desc">Most Posts</option>
+                 <option value="monthlyPosts-desc">High Usage</option>
+                 <option value="creditsUsed-desc">Top Credit Users</option>
+                 <option value="lastUsed-desc">Recently Active</option>
+                 <option value="name-asc">Name (A-Z)</option>
+               </select>
+            </>
+          }
+        />
       </div>
 
       {/* Transaction Modal */}
       {showTransactionModal && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: "20px"
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "8px",
-            width: "90%",
-            maxWidth: "800px",
-            maxHeight: "80vh",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column"
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              padding: "20px",
-              borderBottom: "1px solid #eee",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            }}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <div>
-                <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: "600" }}>
-                  Transaction History
-                </h2>
-                {selectedUser && (
-                  <p style={{ margin: "4px 0 0 0", color: "#666", fontSize: "0.9rem" }}>
-                    {selectedUser.name} ({selectedUser.email})
-                  </p>
-                )}
+                <h3 className="text-lg font-bold text-gray-900">Transactions Log</h3>
+                <p className="text-sm text-gray-500">{selectedUser?.email}</p>
               </div>
-              <button
-                onClick={closeTransactionModal}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "4px",
-                  borderRadius: "4px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}
+              <button 
+                onClick={() => setShowTransactionModal(false)} 
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <X size={20} />
               </button>
             </div>
-
-            {/* Modal Content */}
-            <div style={{ flex: 1, overflow: "auto", padding: "20px" }}>
+            
+            <div className="flex-1 overflow-y-auto p-6">
               {transactionLoading ? (
-                <div style={{ textAlign: "center", padding: "40px" }}>
-                  Loading transactions...
+                <div className="flex justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
-              ) : transactions.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "40px", color: "#666" }}>
-                  No transactions found for this user.
-                </div>
-              ) : (
-                <div>
-                  {transactions.map((tx) => (
-                    <div key={tx._id} style={{
-                      border: "1px solid #eee",
-                      borderRadius: "8px",
-                      padding: "16px",
-                      marginBottom: "12px",
-                      backgroundColor: "#fafafa"
-                    }}>
-                      <div style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        marginBottom: "12px"
-                      }}>
-                        <div>
-                          <div style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            marginBottom: "4px"
-                          }}>
-                            <span style={{ fontWeight: "600", fontSize: "1rem" }}>
-                              {tx.planName}
-                            </span>
-                            <span style={{
-                              padding: "2px 8px",
-                              borderRadius: "12px",
-                              fontSize: "0.75rem",
-                              fontWeight: "500",
-                              backgroundColor: 
-                                tx.status === 'completed' ? '#dcfce7' :
-                                tx.status === 'failed' ? '#fef2f2' :
-                                tx.status === 'cancelled' ? '#f3f4f6' :
-                                tx.status === 'pending' ? '#fef3c7' : '#f3f4f6',
-                              color:
-                                tx.status === 'completed' ? '#166534' :
-                                tx.status === 'failed' ? '#dc2626' :
-                                tx.status === 'cancelled' ? '#6b7280' :
-                                tx.status === 'pending' ? '#d97706' : '#374151'
-                            }}>
-                              {tx.status === 'completed' && <CheckCircle size={12} style={{ display: 'inline', marginRight: '4px' }} />}
-                              {tx.status === 'failed' && <XCircle size={12} style={{ display: 'inline', marginRight: '4px' }} />}
-                              {tx.status === 'cancelled' && <XCircle size={12} style={{ display: 'inline', marginRight: '4px' }} />}
-                              {tx.status === 'pending' && <Clock size={12} style={{ display: 'inline', marginRight: '4px' }} />}
-                              {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
-                            </span>
+              ) : transactions.length > 0 ? (
+                <div className="space-y-3">
+              {transactions.map((tx, i) => (
+                    <div key={i} className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm hover:shadow-md transition-all">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-start gap-4">
+                          <div className={`p-2.5 rounded-lg ${
+                            tx.status === 'succeeded' || tx.status === 'completed' ? 'bg-green-50 text-green-600' : 
+                            tx.status === 'failed' ? 'bg-red-50 text-red-700' : 
+                            'bg-yellow-50 text-yellow-700'
+                          }`}>
+                            {tx.status === 'succeeded' || tx.status === 'completed' ? <CheckCircle size={20} /> : <CreditCard size={20} />}
                           </div>
-                          <div style={{ fontSize: "0.85rem", color: "#666" }}>
-                            <Calendar size={14} style={{ display: 'inline', marginRight: '4px' }} />
-                            {new Date(tx.createdAt).toLocaleString()}
+                          <div>
+                            <h4 className="font-semibold text-gray-900">{tx.description || tx.planName || "Plan Purchase"}</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
+                                tx.status === 'succeeded' || tx.status === 'completed' ? 'bg-green-100 text-green-700' : 
+                                tx.status === 'failed' ? 'bg-red-100 text-red-700' : 
+                                'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {tx.status}
+                              </span>
+                              <span className="text-xs text-gray-400">•</span>
+                              <span className="text-xs text-gray-500 flex items-center gap-1">
+                                {new Date(tx.date || tx.createdAt).toLocaleDateString()} {new Date(tx.date || tx.createdAt).toLocaleTimeString()}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: "1.1rem", fontWeight: "600" }}>
-                            ₹{tx.amount}
-                          </div>
-                          <div style={{ fontSize: "0.8rem", color: "#666" }}>
-                            {tx.paymentMode === 'yearly' ? 'Yearly' : 'Monthly'}
-                          </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-gray-900">
+                            {tx.currency === 'inr' || !tx.currency ? '₹' : '$'}{(tx.amount || 0).toFixed(2)}
+                          </p>
+                          <p className="text-xs text-gray-500 capitalize">{tx.paymentMode ? `${tx.paymentMode}ly` : 'One-time'}</p>
                         </div>
                       </div>
-
-                      {/* Transaction Details */}
-                      <div style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                        gap: "12px",
-                        fontSize: "0.85rem",
-                        color: "#666"
-                      }}>
+                      
+                      {/* Meta Details */}
+                      <div className="grid grid-cols-2 gap-4 text-xs bg-gray-50 p-3 rounded-lg border border-gray-100">
                         <div>
-                          <strong>Gateway:</strong> {tx.gateway}
+                          <span className="block text-gray-400">Gateway</span>
+                          <span className="font-medium text-gray-700">{tx.gateway || "N/A"}</span>
                         </div>
                         <div>
-                          <strong>Type:</strong> {tx.type}
+                           <span className="block text-gray-400">Type</span>
+                           <span className="font-medium text-gray-700 capitalize">{tx.type || "Purchase"}</span>
                         </div>
                         {tx.gatewayTransactionId && (
-                          <div>
-                            <strong>Transaction ID:</strong> {tx.gatewayTransactionId}
+                          <div className="col-span-2 border-t border-gray-200 pt-2">
+                             <span className="block text-gray-400 mb-0.5">Transaction ID</span>
+                             <span className="font-mono text-gray-600 select-all break-all">{tx.gatewayTransactionId}</span>
                           </div>
                         )}
                         {tx.gatewayOrderId && (
-                          <div>
-                            <strong>Order ID:</strong> {tx.gatewayOrderId}
+                          <div className="col-span-2 border-t border-gray-200 pt-2">
+                             <span className="block text-gray-400 mb-0.5">Order ID</span>
+                             <span className="font-mono text-gray-600 select-all break-all">{tx.gatewayOrderId}</span>
                           </div>
                         )}
                         {tx.failureReason && (
-                          <div style={{ color: '#dc2626' }}>
-                            <strong>Failure Reason:</strong> {tx.failureReason}
+                          <div className="col-span-2 text-red-600 bg-red-50 p-1.5 rounded border border-red-100 mt-1">
+                            <span className="font-semibold">Failed:</span> {tx.failureReason}
                           </div>
                         )}
                       </div>
                     </div>
                   ))}
-
-                  {/* Pagination for transactions */}
-                  {transactionPagination.totalPages > 1 && (
-                    <div style={{
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      gap: "8px",
-                      marginTop: "20px"
-                    }}>
-                      <button
-                        onClick={() => fetchUserTransactions(selectedUserId, transactionPagination.page - 1)}
-                        disabled={!transactionPagination.hasPrev}
-                        style={{
-                          padding: "6px 12px",
-                          border: "1px solid #ddd",
-                          borderRadius: "4px",
-                          backgroundColor: transactionPagination.hasPrev ? "white" : "#f5f5f5",
-                          cursor: transactionPagination.hasPrev ? "pointer" : "not-allowed"
-                        }}
-                      >
-                        Previous
-                      </button>
-                      <span style={{ fontSize: "0.9rem", color: "#666" }}>
-                        Page {transactionPagination.page} of {transactionPagination.totalPages}
-                      </span>
-                      <button
-                        onClick={() => fetchUserTransactions(selectedUserId, transactionPagination.page + 1)}
-                        disabled={!transactionPagination.hasNext}
-                        style={{
-                          padding: "6px 12px",
-                          border: "1px solid #ddd",
-                          borderRadius: "4px",
-                          backgroundColor: transactionPagination.hasNext ? "white" : "#f5f5f5",
-                          cursor: transactionPagination.hasNext ? "pointer" : "not-allowed"
-                        }}
-                      >
-                        Next
-                      </button>
-                    </div>
-                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                  <CreditCard size={48} className="mb-4 opacity-50" />
+                  <p>No transactions found for this user.</p>
                 </div>
               )}
+            </div>
+            
+            <div className="p-4 border-t border-gray-100 bg-gray-50/30 flex justify-end">
+              <button 
+                onClick={() => setShowTransactionModal(false)}
+                className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
-
-const thStyle = {
-  padding: "12px 10px",
-  fontWeight: "600",
-  fontSize: "0.85rem",
-  color: "#444",
-  borderBottom: "2px solid #eee",
-  whiteSpace: "nowrap",
-};
-
-const tdStyle = {
-  padding: "12px 10px",
-  fontSize: "0.9rem",
-  color: "#333",
-  verticalAlign: "middle",
-};

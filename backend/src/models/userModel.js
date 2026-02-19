@@ -43,7 +43,13 @@ const userSchema = new mongoose.Schema({
     lastLogin: {
         type: Date,
         default: null
-    }
+    },
+
+    // Track when the last low credit notification was sent
+    lastLowCreditNotificationDate: {
+        type: Date,
+        default: null
+    },
     // Note: We do NOT store the "Confirm Password" field.
     // Its only purpose is to be checked on the frontend to ensure the user typed correctly.
 }, { timestamps: true });

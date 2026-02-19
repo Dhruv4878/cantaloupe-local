@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Send,
   TrendingUp,
@@ -133,6 +134,19 @@ const DashboardView = ({ onPostCountUpdate }) => {
     currentPlan: { used: 0, limit: 0, hasLimit: false, planName: 'Free' }
   });
   const [loadingCounts, setLoadingCounts] = useState(true);
+  const [recentPosts, setRecentPosts] = useState([]);
+  const [loadingRecentPosts, setLoadingRecentPosts] = useState(true);
+
+  // Analytics state
+  const [analytics, setAnalytics] = useState({
+    engagementRate: 0,
+    monthlyTrend: [],
+    topPlatform: null,
+    topPost: null,
+    insights: '',
+    loading: true,
+    lastSynced: null,
+  });
 
   // Calculate limit reached based on current plan usage
   const isLimitReached = postStats.currentPlan.hasLimit && 
@@ -301,6 +315,85 @@ const DashboardView = ({ onPostCountUpdate }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiUrl, requireToken]);
 
+  // Fetch recent posts function - gets last 3 posts
+  const fetchRecentPosts = useCallback(async () => {
+    try {
+      setLoadingRecentPosts(true);
+
+      const token = requireToken();
+      if (!token) {
+        setRecentPosts([]);
+        return;
+      }
+
+      const res = await fetch(`${apiUrl}/posts`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        console.error("Failed to fetch recent posts:", res.status);
+        setRecentPosts([]);
+        return;
+      }
+
+      const posts = await res.json();
+      
+      // Take only first 3 posts and normalize data
+      const recentThree = (Array.isArray(posts) ? posts : []).slice(0, 3).map((p) => {
+        const c = p?.content || {};
+        
+        // Get image URL
+        const image =
+          c.imageUrl ||
+          c.thumbnailUrl ||
+          c?.instagram?.imageUrl ||
+          c?.facebook?.imageUrl ||
+          c?.linkedin?.imageUrl ||
+          c?.twitter?.imageUrl ||
+          null;
+        
+        // Get caption/title
+        const platformsObj = c.platforms || {};
+        const captionPriorityOrder = ["instagram", "facebook", "linkedin", "x", "twitter"];
+        
+        let firstCaption = "";
+        for (const key of captionPriorityOrder) {
+          const maybe = platformsObj?.[key]?.caption;
+          if (typeof maybe === "string" && maybe.trim()) {
+            firstCaption = maybe;
+            break;
+          }
+        }
+        
+        const primaryText =
+          c.postContent ||
+          firstCaption ||
+          c.title ||
+          c.heading ||
+          c.caption ||
+          "Generated Post";
+        
+        const title = String(primaryText).slice(0, 60);
+        
+        return {
+          id: p._id || p.id,
+          image,
+          title,
+          createdAt: p?.createdAt,
+        };
+      });
+      
+      setRecentPosts(recentThree);
+    } catch (err) {
+      console.error("Recent posts error:", err);
+      setRecentPosts([]);
+    } finally {
+      setLoadingRecentPosts(false);
+    }
+  }, [apiUrl, requireToken]);
+
   // Fetch post stats on mount and when API URL changes
   useEffect(() => {
     fetchPostStats();
@@ -333,6 +426,100 @@ const DashboardView = ({ onPostCountUpdate }) => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [fetchPostStats]);
+
+  // Fetch recent posts on mount and when API URL changes
+  useEffect(() => {
+    fetchRecentPosts();
+  }, [fetchRecentPosts]);
+
+  // Refresh recent posts when navigating to dashboard route
+  useEffect(() => {
+    if (pathname === "/dashboard") {
+      fetchRecentPosts();
+    }
+  }, [pathname, fetchRecentPosts]);
+
+  // Refresh recent posts when page becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchRecentPosts();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [fetchRecentPosts]);
+
+  // Fetch analytics data
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const token = requireToken();
+      if (!token) {
+        setAnalytics(prev => ({ ...prev, loading: false }));
+        return;
+      }
+
+      setAnalytics(prev => ({ ...prev, loading: true }));
+
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const [engagementRes, trendRes, platformRes, postRes, insightsRes] = await Promise.allSettled([
+        fetch(`${apiUrl}/analytics/engagement-summary`, { headers }),
+        fetch(`${apiUrl}/analytics/monthly-trend`, { headers }),
+        fetch(`${apiUrl}/analytics/top-platform`, { headers }),
+        fetch(`${apiUrl}/analytics/top-post`, { headers }),
+        fetch(`${apiUrl}/analytics/insights`, { headers }),
+      ]);
+
+      const engagementData = engagementRes.status === 'fulfilled' && engagementRes.value.ok 
+        ? await engagementRes.value.json() 
+        : { engagementRate: 0 };
+
+      const trendData = trendRes.status === 'fulfilled' && trendRes.value.ok 
+        ? await trendRes.value.json() 
+        : [];
+
+      const platformData = platformRes.status === 'fulfilled' && platformRes.value.ok 
+        ? await platformRes.value.json() 
+        : null;
+
+      const postData = postRes.status === 'fulfilled' && postRes.value.ok 
+        ? await postRes.value.json() 
+        : null;
+
+      const insightsData = insightsRes.status === 'fulfilled' && insightsRes.value.ok 
+        ? await insightsRes.value.json() 
+        : { insights: '' };
+
+      setAnalytics({
+        engagementRate: engagementData.engagementRate || 0,
+        monthlyTrend: trendData,
+        topPlatform: platformData?.platform || null,
+        topPost: postData,
+        insights: insightsData.insights || 'No insights available yet. Publish posts to see analytics.',
+        loading: false,
+        lastSynced: new Date(),
+      });
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      setAnalytics(prev => ({ ...prev, loading: false }));
+    }
+  }, [apiUrl, requireToken]);
+
+  // Fetch analytics on mount
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  // Refresh analytics when navigating to dashboard
+  useEffect(() => {
+    if (pathname === "/dashboard") {
+      fetchAnalytics();
+    }
+  }, [pathname, fetchAnalytics]);
 
   const EnhancedPostsStatBlock = ({ postStats, loading, icon: Icon, color }) => (
     <GlassCard className="flex flex-col justify-between h-full min-h-[160px]">
@@ -462,6 +649,64 @@ const DashboardView = ({ onPostCountUpdate }) => {
     );
   };
 
+  const RecentPostsHistory = ({ posts, loading }) => {
+    const router = useRouter();
+    
+    return (
+      <div className="space-y-3">
+        {/* Posts List */}
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <p className="text-gray-400 text-sm">Loading recent posts…</p>
+          </div>
+        ) : posts.length === 0 ? (
+          <div className="flex items-center justify-center py-8">
+            <p className="text-gray-400 text-sm">No posts yet</p>
+          </div>
+        ) : (
+          posts.map((post) => (
+            <div
+              key={post.id}
+              onClick={() => router.push(`/post?id=${encodeURIComponent(post.id)}`)}
+              className="flex gap-3 p-2.5 rounded-lg hover:bg-white/5 cursor-pointer transition-all group"
+            >
+              {/* Post Thumbnail */}
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                {post.image ? (
+                  <img
+                    src={post.image}
+                    alt="Post thumbnail"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">
+                    No image
+                  </div>
+                )}
+              </div>
+
+              {/* Post Info */}
+              <div className="flex-1 min-w-0 flex flex-col justify-center">
+                <p className="text-sm font-medium text-gray-200 line-clamp-2 leading-tight group-hover:text-white transition-colors">
+                  {post.title}
+                </p>
+                {post.createdAt && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {new Date(post.createdAt).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto">
       {/* Quick Stats Grid */}
@@ -475,11 +720,11 @@ const DashboardView = ({ onPostCountUpdate }) => {
           />
         </Link>
         <StatBlock
-          title="Avg. Engagement Rate (dummy)"
-          value={`${dashboardData.engagementRate}%`}
+          title="Avg. Engagement Rate"
+          value={analytics.loading ? "—" : `${analytics.engagementRate}%`}
           icon={TrendingUp}
           color="#4DD0E1"
-          subtitle="Average across all active channels"
+          subtitle="Average across all published posts"
         />
         <StatBlock
           title="Subscription Usage Cost (dummy)"
@@ -489,18 +734,18 @@ const DashboardView = ({ onPostCountUpdate }) => {
           subtitle="Current month's estimated cost"
         />
         <StatBlock
-          title="Top Platform (dummy)"
-          value={dashboardData.topEngagingPlatform}
+          title="Top Platform"
+          value={analytics.loading ? "—" : (analytics.topPlatform || "N/A")}
           icon={Instagram}
           color="#F06292"
-          subtitle="Where your content performs best"
+          subtitle="Highest engagement rate"
         />
       </div>
 
-      {/* NEW: Create Content Placeholder Bar */}
+      {/* Create Content Placeholder Bar */}
       <div className="mb-6 lg:mb-8">
         <Link
-          href={isLimitReached ? "#" : "/generate"}
+          href={isLimitReached ? "#" : "/generatepost"}
           className={isLimitReached ? "pointer-events-none opacity-50" : ""}
         >
           <GlassCard className="flex items-center py-4 px-5 gap-4 cursor-pointer group hover:bg-white/5 transition-all duration-300 border border-white/10 hover:border-orange-500/30">
@@ -532,16 +777,28 @@ const DashboardView = ({ onPostCountUpdate }) => {
           {/* CHANGED: h-auto -> h-full to stretch height */}
           <GlassCard className="h-full">
             <h3 className="text-lg sm:text-xl font-bold mb-8 border-b border-white/10 pb-5">
-              Monthly Engagement Trend (dummy)
+              Monthly Engagement Trend
             </h3>
-            <LineGraph
-              data={dashboardData.engagementGraph}
-              color="#38B2AC"
-              label="Interactions"
-            />
-            <p className="text-[11px] sm:text-xs text-gray-500 mt-2 text-right">
-              Last 6 Months
-            </p>
+            {analytics.loading ? (
+              <div className="flex items-center justify-center h-48">
+                <p className="text-gray-400 text-sm">Loading analytics...</p>
+              </div>
+            ) : analytics.monthlyTrend.length > 0 ? (
+              <>
+                <LineGraph
+                  data={analytics.monthlyTrend}
+                  color="#38B2AC"
+                  label="Engagements"
+                />
+                <p className="text-[11px] sm:text-xs text-gray-500 mt-2 text-right">
+                  Last {analytics.monthlyTrend.length} Months
+                </p>
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-48">
+                <p className="text-gray-400 text-sm">No engagement data available</p>
+              </div>
+            )}
           </GlassCard>
         </div>
 
@@ -561,17 +818,31 @@ const DashboardView = ({ onPostCountUpdate }) => {
           {/* CHANGED: Removed 'h-auto md:h-48', added 'h-full' to stretch to bottom */}
           <GlassCard className="h-full flex flex-col">
             <h3 className="text-lg sm:text-xl font-bold mb-4 border-b border-white/10 pb-2">
-              AI Content Insight (dummy)
+              AI Content Insights
             </h3>
             <div className="flex items-start flex-grow">
               <Cpu
                 size={22}
                 className="text-orange-400 mr-3 flex-shrink-0 mt-0.5"
               />
-              <p className="text-sm text-gray-300 italic leading-relaxed">
-                "{dashboardData.aiInsight}"
-              </p>
+              {analytics.loading ? (
+                <p className="text-sm text-gray-400 italic">Loading insights...</p>
+              ) : (
+                <p className="text-sm text-gray-300 italic leading-relaxed">
+                  "{analytics.insights}"
+                </p>
+              )}
             </div>
+          </GlassCard>
+        </div>
+
+        {/* Recent Posts History */}
+        <div className="lg:col-span-1 min-w-0">
+          <GlassCard className="h-full flex flex-col">
+            <h3 className="text-lg sm:text-xl font-bold mb-4 border-b border-white/10 pb-2">
+              Recent Posts
+            </h3>
+            <RecentPostsHistory posts={recentPosts} loading={loadingRecentPosts} />
           </GlassCard>
         </div>
 
@@ -580,23 +851,36 @@ const DashboardView = ({ onPostCountUpdate }) => {
           {/* CHANGED: Added 'h-full' */}
           <GlassCard className="h-full">
             <h3 className="text-lg sm:text-xl font-bold mb-4 border-b border-white/10 pb-2">
-              Top Engaging Post (dummy)
+              Top Engaging Post
             </h3>
-            <p className="text-gray-400 text-xs sm:text-sm mb-2">
-              Platform:{" "}
-              <span className="font-semibold text-white">
-                {dashboardData.topEngagingPost.platform}
-              </span>
-            </p>
-            <p className="text-gray-300 italic text-sm line-clamp-3">
-              "{dashboardData.topEngagingPost.content}"
-            </p>
-            <p className="text-xs sm:text-sm text-gray-400 mt-3">
-              Engagements:{" "}
-              <span className="text-lg font-bold text-green-400">
-                {dashboardData.topEngagingPost.engagements}
-              </span>
-            </p>
+            {analytics.loading ? (
+              <p className="text-gray-400 text-sm">Loading...</p>
+            ) : analytics.topPost ? (
+              <>
+                <p className="text-gray-400 text-xs sm:text-sm mb-2">
+                  Platform:{" "}
+                  <span className="font-semibold text-white">
+                    {analytics.topPost.platform}
+                  </span>
+                </p>
+                <p className="text-gray-300 italic text-sm line-clamp-3">
+                  "{analytics.topPost.content}"
+                </p>
+                <div className="mt-3 space-y-1">
+                  <p className="text-xs sm:text-sm text-gray-400">
+                    Engagements:{" "}
+                    <span className="text-lg font-bold text-green-400">
+                      {analytics.topPost.totalEngagements}
+                    </span>
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Engagement Rate: {analytics.topPost.engagementRate}%
+                  </p>
+                </div>
+              </>
+            ) : (
+              <p className="text-gray-400 text-sm">No post data available</p>
+            )}
           </GlassCard>
 
           {/* CHANGED: Added 'h-full' */}

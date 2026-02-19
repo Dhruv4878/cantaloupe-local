@@ -14,6 +14,8 @@ import {
   Twitter,
 } from "lucide-react";
 import GradientButton from "../GradientButton";
+import ForgotPasswordModal from "../ForgotPasswordModal";
+import { useRouter } from "next/navigation";
 
 const GlassCard = ({ children, className = "" }) => (
   <div
@@ -33,7 +35,7 @@ const sections = [
   { id: "profile", label: "Profile", icon: User },
   { id: "account", label: "Account & Security", icon: Shield },
   { id: "publishing", label: "Publishing Preferences", icon: Globe2 },
-  { id: "social", label: "Social Connections", icon: Link2 },
+  // { id: "social", label: "Social Connections", icon: Link2 },
   { id: "notifications", label: "Notifications", icon: Bell },
 ];
 
@@ -77,18 +79,21 @@ const InputField = ({
 );
 
 const SettingsView = () => {
+  const router = useRouter();
   const [activeSection, setActiveSection] = useState("profile");
+  const [loading, setLoading] = useState(true);
+  const [notification, setNotification] = useState(null); // { type: 'success'|'error', message: '' }
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
   const [profile, setProfile] = useState({
     name: "",
     email: "",
     timezone: "Asia/Kolkata",
-  });
-
-  const [passwords, setPasswords] = useState({
-    current: "",
-    next: "",
-    confirm: "",
+    // Backend profile fields
+    accountType: "Creator",
+    businessName: "",
+    website: "",
+    businessDescription: "",
   });
 
   const [publishing, setPublishing] = useState({
@@ -104,11 +109,82 @@ const SettingsView = () => {
     productUpdates: false,
   });
 
-  const handleSave = () => {
-    console.log("Profile:", profile);
-    console.log("Passwords:", passwords);
-    console.log("Publishing:", publishing);
-    console.log("Notifications:", notifications);
+  // Fetch Profile on Mount
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const token = sessionStorage.getItem("authToken");
+        if (!token) {
+          router.push("/login");
+          return;
+        }
+
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+        const res = await fetch(`${apiUrl}/profile/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // Map backend data to state
+          const firstName = data.user?.firstName || "";
+          const lastName = data.user?.lastName || "";
+          const name = (firstName + " " + lastName).trim();
+
+          setProfile((prev) => ({
+            ...prev,
+            name,
+            email: data.user?.email || "",
+            timezone: data.timezone || "Asia/Kolkata",
+            accountType: data.accountType || "Creator",
+            businessName: data.businessName || "",
+            website: data.website || "",
+            businessDescription: data.businessDescription || "",
+          }));
+          
+          // If you had publishing/notification preferences in backend, load them here
+        }
+      } catch (err) {
+        console.error("Failed to fetch profile:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, [router]);
+
+
+  /* Removed passwords state since we use modal now */
+
+  const handleSave = async () => {
+    setNotification(null);
+    try {
+      const token = sessionStorage.getItem("authToken");
+      if (!token) return;
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      
+      const res = await fetch(`${apiUrl}/profile`, {
+        method: "POST",
+        headers: { 
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify(profile),
+      });
+
+      if (res.ok) {
+        setNotification({ type: 'success', message: 'Profile updated successfully!' });
+        // Update userEmail in session if needed, though usually email isn't changed here yet
+        setTimeout(() => setNotification(null), 3000);
+      } else {
+        const err = await res.json();
+        setNotification({ type: 'error', message: err.message || 'Failed to update profile' });
+      }
+    } catch (error) {
+       setNotification({ type: 'error', message: 'An unexpected error occurred' });
+    }
   };
 
   const renderSectionContent = () => {
@@ -134,15 +210,15 @@ const SettingsView = () => {
                   setProfile((p) => ({ ...p, name: e.target.value }))
                 }
               />
-              <InputField
-                label="Email"
-                type="email"
-                value={profile.email}
-                placeholder="you@company.com"
-                onChange={(e) =>
-                  setProfile((p) => ({ ...p, email: e.target.value }))
-                }
-              />
+              <div className="w-full">
+                <label className="text-sm text-white/80 block mb-1">Email</label>
+                <input 
+                    type="email" 
+                    value={profile.email} 
+                    disabled
+                    className="w-full rounded-xl bg-white/5 border border-white/10 px-3.5 py-2.5 text-sm sm:text-[15px] text-white/50 cursor-not-allowed"
+                />
+              </div>
               <div className="w-full">
                 <label className="text-sm text-white/80 block mb-1.5">
                   Timezone
@@ -179,33 +255,22 @@ const SettingsView = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <InputField
-                label="Current Password"
-                type="password"
-                value={passwords.current}
-                placeholder="••••••••"
-                onChange={(e) =>
-                  setPasswords((p) => ({ ...p, current: e.target.value }))
-                }
-              />
-              <InputField
-                label="New Password"
-                type="password"
-                value={passwords.next}
-                placeholder="New secure password"
-                onChange={(e) =>
-                  setPasswords((p) => ({ ...p, next: e.target.value }))
-                }
-              />
-              <InputField
-                label="Confirm New Password"
-                type="password"
-                value={passwords.confirm}
-                placeholder="Re-type new password"
-                onChange={(e) =>
-                  setPasswords((p) => ({ ...p, confirm: e.target.value }))
-                }
-              />
+              <div className="md:col-span-2">
+                 <div className="p-4 rounded-xl border border-white/10 bg-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <h3 className="text-sm font-medium text-white">Password</h3>
+                        <p className="text-xs text-white/60 mt-1">
+                            Secure your account with a strong password.
+                        </p>
+                    </div>
+                    <GradientButton 
+                        onClick={() => setIsForgotPasswordOpen(true)}
+                        className="w-full sm:w-auto px-4 py-2 text-xs sm:text-sm"
+                    >
+                        Change Password
+                    </GradientButton>
+                 </div>
+              </div>
             </div>
 
             <GlassCard className="mt-2 bg-white/5">
@@ -219,6 +284,12 @@ const SettingsView = () => {
                 Enable 2FA (coming soon)
               </GradientButton>
             </GlassCard>
+            
+            <ForgotPasswordModal 
+                isOpen={isForgotPasswordOpen}
+                onClose={() => setIsForgotPasswordOpen(false)}
+                email={profile.email}
+            />
           </div>
         );
 
@@ -295,89 +366,89 @@ const SettingsView = () => {
           </div>
         );
 
-      case "social":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-lg sm:text-xl font-semibold mb-1">
-                Social Connections
-              </h2>
-              <p className="text-xs sm:text-sm text-white/60">
-                Connect and manage your social profiles used for publishing.
-              </p>
-            </div>
+      // case "social":
+      //   return (
+      //     <div className="space-y-6">
+      //       <div>
+      //         <h2 className="text-lg sm:text-xl font-semibold mb-1">
+      //           Social Connections
+      //         </h2>
+      //         <p className="text-xs sm:text-sm text-white/60">
+      //           Connect and manage your social profiles used for publishing.
+      //         </p>
+      //       </div>
 
-            <div className="space-y-3">
-              <GlassCard className="bg-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-yellow-500 flex items-center justify-center">
-                    <Instagram size={16} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Instagram Business</p>
-                    <p className="text-xs text-white/60">
-                      Connect to publish reels & posts.
-                    </p>
-                  </div>
-                </div>
-                <GradientButton className="w-full sm:w-auto px-4 py-1.5 text-xs sm:text-sm">
-                  Connect
-                </GradientButton>
-              </GlassCard>
+      //       <div className="space-y-3">
+      //         <GlassCard className="bg-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      //           <div className="flex items-center gap-3">
+      //             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-yellow-500 flex items-center justify-center">
+      //               <Instagram size={16} />
+      //             </div>
+      //             <div>
+      //               <p className="text-sm font-medium">Instagram Business</p>
+      //               <p className="text-xs text-white/60">
+      //                 Connect to publish reels & posts.
+      //               </p>
+      //             </div>
+      //           </div>
+      //           <GradientButton className="w-full sm:w-auto px-4 py-1.5 text-xs sm:text-sm">
+      //             Connect
+      //           </GradientButton>
+      //         </GlassCard>
 
-              <GlassCard className="bg-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[#1877F2]/80 flex items-center justify-center">
-                    <Facebook size={16} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Facebook Pages</p>
-                    <p className="text-xs text-white/60">
-                      Publish to your brand pages.
-                    </p>
-                  </div>
-                </div>
-                <GradientButton className="w-full sm:w-auto px-4 py-1.5 text-xs sm:text-sm">
-                  Connect
-                </GradientButton>
-              </GlassCard>
+      //         <GlassCard className="bg-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      //           <div className="flex items-center gap-3">
+      //             <div className="w-8 h-8 rounded-full bg-[#1877F2]/80 flex items-center justify-center">
+      //               <Facebook size={16} />
+      //             </div>
+      //             <div>
+      //               <p className="text-sm font-medium">Facebook Pages</p>
+      //               <p className="text-xs text-white/60">
+      //                 Publish to your brand pages.
+      //               </p>
+      //             </div>
+      //           </div>
+      //           <GradientButton className="w-full sm:w-auto px-4 py-1.5 text-xs sm:text-sm">
+      //             Connect
+      //           </GradientButton>
+      //         </GlassCard>
 
-              <GlassCard className="bg-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[#0A66C2]/80 flex items-center justify-center">
-                    <Linkedin size={16} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">LinkedIn</p>
-                    <p className="text-xs text-white/60">
-                      Post to company pages or personal profile.
-                    </p>
-                  </div>
-                </div>
-                <GradientButton className="w-full sm:w-auto px-4 py-1.5 text-xs sm:text-sm">
-                  Connect
-                </GradientButton>
-              </GlassCard>
+      //         <GlassCard className="bg-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      //           <div className="flex items-center gap-3">
+      //             <div className="w-8 h-8 rounded-full bg-[#0A66C2]/80 flex items-center justify-center">
+      //               <Linkedin size={16} />
+      //             </div>
+      //             <div>
+      //               <p className="text-sm font-medium">LinkedIn</p>
+      //               <p className="text-xs text-white/60">
+      //                 Post to company pages or personal profile.
+      //               </p>
+      //             </div>
+      //           </div>
+      //           <GradientButton className="w-full sm:w-auto px-4 py-1.5 text-xs sm:text-sm">
+      //             Connect
+      //           </GradientButton>
+      //         </GlassCard>
 
-              <GlassCard className="bg-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
-                    <Twitter size={16} className="text-black" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">X (Twitter)</p>
-                    <p className="text-xs text-white/60">
-                      Share short updates & threads.
-                    </p>
-                  </div>
-                </div>
-                <GradientButton className="w-full sm:w-auto px-4 py-1.5 text-xs sm:text-sm">
-                  Connect
-                </GradientButton>
-              </GlassCard>
-            </div>
-          </div>
-        );
+      //         <GlassCard className="bg-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      //           <div className="flex items-center gap-3">
+      //             <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
+      //               <Twitter size={16} className="text-black" />
+      //             </div>
+      //             <div>
+      //               <p className="text-sm font-medium">X (Twitter)</p>
+      //               <p className="text-xs text-white/60">
+      //                 Share short updates & threads.
+      //               </p>
+      //             </div>
+      //           </div>
+      //           <GradientButton className="w-full sm:w-auto px-4 py-1.5 text-xs sm:text-sm">
+      //             Connect
+      //           </GradientButton>
+      //         </GlassCard>
+      //       </div>
+      //     </div>
+      //   );
 
       case "notifications":
         return (
@@ -446,7 +517,7 @@ const SettingsView = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050816] text-white">
+    <div className={`min-h-screen bg-[#050816] text-white ${isForgotPasswordOpen ? 'min-h-[150vh]' : ''}`}>
       <div className="mx-auto w-full max-w-6xl px-0 sm:px-0 lg:px-0 py-6 sm:py-10">
         {/* Header */}
         <div className="flex flex-col gap-2 mb-6 sm:mb-8">
@@ -458,6 +529,17 @@ const SettingsView = () => {
             Control how Cantaloupe works for you.
           </h1>
         </div>
+
+        {/* Notification Banner */}
+        {notification && (
+            <div className={`mb-6 p-4 rounded-xl border ${
+                notification.type === 'success' 
+                    ? 'bg-green-500/10 border-green-500/20 text-green-200' 
+                    : 'bg-red-500/10 border-red-500/20 text-red-200'
+            }`}>
+                {notification.message}
+            </div>
+        )}
 
         {/* Layout */}
         <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">

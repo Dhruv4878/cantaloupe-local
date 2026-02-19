@@ -7,6 +7,7 @@ const statsController = require("../controllers/stats.controller");
 const logsController = require("../controllers/logs.controller");
 const adminPlansRoutes = require('./adminPlans');
 const settingsRoutes = require('./settings.routes');
+const templateRoutes = require('./templateRoutes');
 
 const superAdminAuth = require("../middleware/superAdminAuth");
 
@@ -48,6 +49,17 @@ router.use('/', adminPlansRoutes);
 
 // Settings routes (manage global discount)
 router.use('/', settingsRoutes);
+
+// Template management routes
+router.use('/', templateRoutes);
+
+// Upload routes for super admin
+const uploadController = require('../../api/controllers/uploadController');
+router.post('/upload/template-image',
+   superAdminAuth,
+   uploadController.uploadMiddleware,
+   uploadController.uploadTemplateImage
+);
 
 // TEMP check (optional)
 router.get("/me", superAdminAuth, (req, res) => {

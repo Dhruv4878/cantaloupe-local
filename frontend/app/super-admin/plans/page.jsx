@@ -1,7 +1,8 @@
-// SuperAdminPlansPage.jsx
 "use client";
 
 import { useEffect, useState } from "react";
+import { Plus, Edit2, Trash2, Tag, Percent, Check, AlertCircle } from "lucide-react";
+import DataTable from "@/components/ui/admin/DataTable";
 
 export default function SuperAdminPlansPage() {
   const [plans, setPlans] = useState([]);
@@ -10,14 +11,12 @@ export default function SuperAdminPlansPage() {
   const [discountInput, setDiscountInput] = useState("");
   const [discountLoading, setDiscountLoading] = useState(false);
 
-  // State for Modal
+  // Modal State
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  // Track if we are editing (stores the ID) or creating (null)
   const [editingId, setEditingId] = useState(null);
-
-  // New State: Discount Calculator
+  
+  // Discount Calculator State
   const [discountPercent, setDiscountPercent] = useState("");
 
   const initialFormState = {
@@ -39,17 +38,14 @@ export default function SuperAdminPlansPage() {
   };
 
   const [formData, setFormData] = useState(initialFormState);
-
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
-  // --- API Calls ---
+  // --- API Handling ---
 
   const fetchPlans = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/super-admin/plans`, {
-        credentials: "include",
-      });
+      const res = await fetch(`${apiUrl}/super-admin/plans`, { credentials: "include" });
       const data = await res.json();
       setPlans(data);
     } catch (e) {
@@ -61,9 +57,7 @@ export default function SuperAdminPlansPage() {
 
   const fetchGlobalDiscount = async () => {
     try {
-      const res = await fetch(`${apiUrl}/super-admin/discount`, {
-        credentials: "include",
-      });
+      const res = await fetch(`${apiUrl}/super-admin/discount`, { credentials: "include" });
       const data = await res.json();
       setGlobalDiscount(data.globalDiscount);
       setDiscountInput(data.globalDiscount.toString());
@@ -73,16 +67,9 @@ export default function SuperAdminPlansPage() {
   };
 
   const updateGlobalDiscount = async () => {
-    if (discountInput === "") {
-      alert("Please enter a discount percentage");
-      return;
-    }
-
-    const discountValue = parseFloat(discountInput);
-    if (discountValue < 0 || discountValue > 100) {
-      alert("Discount must be between 0 and 100");
-      return;
-    }
+    if (discountInput === "") return alert("Please enter a discount percentage");
+    const val = parseFloat(discountInput);
+    if (val < 0 || val > 100) return alert("Discount must be between 0 and 100");
 
     setDiscountLoading(true);
     try {
@@ -90,15 +77,14 @@ export default function SuperAdminPlansPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ globalDiscount: discountValue }),
+        body: JSON.stringify({ globalDiscount: val }),
       });
-
-      if (!res.ok) throw new Error("Failed to update discount");
-
+      if (!res.ok) throw new Error("Failed");
+      
       const data = await res.json();
       setGlobalDiscount(data.globalDiscount);
-      alert("Global discount updated successfully!");
-      fetchPlans(); // Refresh plans to show updated discount
+      // alert("Global discount updated!");
+      fetchPlans();
     } catch (err) {
       alert("Error updating discount: " + err.message);
     } finally {
@@ -111,7 +97,8 @@ export default function SuperAdminPlansPage() {
     fetchGlobalDiscount();
   }, []);
 
-  // --- Helper: Calculate Yearly Price ---
+  // --- Logic Helpers ---
+
   const calculateYearly = (monthly, percent) => {
     if (!monthly || !percent) return "";
     const total = monthly * 12;
@@ -119,30 +106,23 @@ export default function SuperAdminPlansPage() {
     return Math.round(total - discountAmount);
   };
 
-  // --- Handlers ---
-
   const openCreateModal = () => {
     setEditingId(null);
     setFormData(initialFormState);
-    setDiscountPercent(""); // Reset discount
+    setDiscountPercent("");
     setShowModal(true);
   };
 
   const openEditModal = (plan) => {
     setEditingId(plan._id);
-
-    // Reverse calculate the discount % for display purposes
     let calculatedDiscount = "";
     if (plan.price_monthly && plan.price_yearly) {
-      const fullYear = plan.price_monthly * 12;
-      const saved = fullYear - plan.price_yearly;
-      if (saved > 0) {
-        calculatedDiscount = Math.round((saved / fullYear) * 100);
-      }
+      const full = plan.price_monthly * 12;
+      const saved = full - plan.price_yearly;
+      if (saved > 0) calculatedDiscount = Math.round((saved / full) * 100);
     }
     setDiscountPercent(calculatedDiscount);
-
-    // Populate form with plan data
+    
     setFormData({
       name: plan.name,
       description: plan.description || "",
@@ -166,25 +146,17 @@ export default function SuperAdminPlansPage() {
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     let finalValue = type === "checkbox" ? checked : value;
-
-    if (type === "number") {
-      finalValue = value === "" ? 0 : Number(value);
-    }
+    if (type === "number") finalValue = value === "" ? 0 : Number(value);
 
     if (name.startsWith("feat_")) {
-      const featureName = name.replace("feat_", "");
-      setFormData((prev) => ({
+      const featKey = name.replace("feat_", "");
+      setFormData(prev => ({
         ...prev,
-        features: {
-          ...prev.features,
-          [featureName]: finalValue,
-        },
+        features: { ...prev.features, [featKey]: finalValue }
       }));
     } else {
-      setFormData((prev) => {
+      setFormData(prev => {
         const newData = { ...prev, [name]: finalValue };
-
-        // Auto-calculate logic: If Monthly Price changes while discount is set, update Yearly
         if (name === "price_monthly" && discountPercent) {
           newData.price_yearly = calculateYearly(finalValue, discountPercent);
         }
@@ -193,16 +165,13 @@ export default function SuperAdminPlansPage() {
     }
   };
 
-  // Handler specifically for the Discount Input
   const handleDiscountChange = (e) => {
     const val = e.target.value;
     setDiscountPercent(val);
-
-    // Apply calculation immediately to formData
     if (formData.price_monthly && val) {
-      setFormData((prev) => ({
+      setFormData(prev => ({
         ...prev,
-        price_yearly: calculateYearly(prev.price_monthly, val),
+        price_yearly: calculateYearly(prev.price_monthly, val)
       }));
     }
   };
@@ -210,28 +179,23 @@ export default function SuperAdminPlansPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-
     try {
-      // Determine URL and Method based on Editing vs Creating
-      const url = editingId
-        ? `${apiUrl}/super-admin/plans/${editingId}`
-        : `${apiUrl}/super-admin/plans`;
-
+      const url = editingId ? `${apiUrl}/super-admin/plans/${editingId}` : `${apiUrl}/super-admin/plans`;
       const method = editingId ? "PUT" : "POST";
-
+      
       const res = await fetch(url, {
-        method: method,
+        method,
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(formData),
       });
 
-      if (!res.ok) throw new Error("Failed to save plan");
-
+      if (!res.ok) throw new Error("Failed to save");
+      
       setShowModal(false);
-      await fetchPlans();
+      fetchPlans();
     } catch (err) {
-      alert("Error saving plan: " + err.message);
+      alert("Error saving: " + err.message);
     } finally {
       setSubmitting(false);
     }
@@ -243,14 +207,14 @@ export default function SuperAdminPlansPage() {
         method: "PATCH",
         credentials: "include",
       });
-      fetchPlans(); // Refresh list to confirm status
+      fetchPlans();
     } catch (e) {
       console.error(e);
     }
   };
 
   const remove = async (id) => {
-    if (!confirm("Delete plan? This cannot be undone")) return;
+    if (!confirm("Delete plan?")) return;
     try {
       await fetch(`${apiUrl}/super-admin/plans/${id}`, {
         method: "DELETE",
@@ -262,725 +226,301 @@ export default function SuperAdminPlansPage() {
     }
   };
 
-  return (
-    <div
-      style={{
-        padding: "30px",
-        backgroundColor: "#f9fafb",
-        minHeight: "100vh",
-        fontFamily: "'Inter', sans-serif",
-        color: "#333",
-      }}
-    >
-      {/* Styles for the Toggle Switch */}
-      <style jsx>{`
-        .toggle-switch {
-          position: relative;
-          display: inline-block;
-          width: 44px;
-          height: 24px;
-        }
-        .toggle-switch input {
-          opacity: 0;
-          width: 0;
-          height: 0;
-        }
-        .slider {
-          position: absolute;
-          cursor: pointer;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background-color: #ccc;
-          transition: 0.4s;
-          border-radius: 34px;
-        }
-        .slider:before {
-          position: absolute;
-          content: "";
-          height: 18px;
-          width: 18px;
-          left: 3px;
-          bottom: 3px;
-          background-color: white;
-          transition: 0.4s;
-          border-radius: 50%;
-        }
-        input:checked + .slider {
-          background-color: #000;
-        }
-        input:checked + .slider:before {
-          transform: translateX(20px);
-        }
-      `}</style>
-
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 24,
-        }}
-      >
+  // --- Columns for DataTable ---
+  const columns = [
+    {
+      header: "Plan Name",
+      accessor: "name",
+      render: (row) => (
         <div>
-          <h1
-            style={{
-              color: "#000",
-              fontSize: 26,
-              fontWeight: "700",
-              margin: 0,
-            }}
-          >
-            All Plans
-          </h1>
-          <p style={{ color: "#666", marginTop: 4, fontSize: "0.9rem" }}>
-            Manage pricing and features for the public page.
-          </p>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-gray-900">{row.name}</span>
+            {row.recommended && (
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-700 bg-orange-100 rounded-full">
+                Recommended
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">{row.description}</p>
         </div>
-        <button
-          onClick={openCreateModal}
-          style={{
-            padding: "10px 20px",
-            backgroundColor: "#fff",
-            color: "#000",
-            border: "1px solid #ddd",
-            borderRadius: "8px",
-            cursor: "pointer",
-            fontWeight: "600",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-            fontSize: "0.9rem",
-          }}
+      )
+    },
+    {
+      header: "Price (Mo)",
+      accessor: "price",
+      render: (row) => (
+        <span className="font-medium text-gray-900">₹{row.price_monthly}</span>
+      )
+    },
+    {
+      header: "Status",
+      accessor: "status",
+      render: (row) => (
+        <button 
+          onClick={(e) => { e.stopPropagation(); toggleStatus(row._id, row.status); }}
+          className={`
+            relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+            ${row.status === 'active' ? 'bg-blue-600' : 'bg-gray-200'}
+          `}
         >
-          <span>+</span> Create Plan
+          <span
+            className={`
+              inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+              ${row.status === 'active' ? 'translate-x-6' : 'translate-x-1'}
+            `}
+          />
+        </button>
+      )
+    },
+    {
+      header: "Actions",
+      accessor: "actions",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={(e) => { e.stopPropagation(); openEditModal(row); }}
+            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+          >
+            <Edit2 size={16} />
+          </button>
+          <button 
+            onClick={(e) => { e.stopPropagation(); remove(row._id); }}
+            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      )
+    }
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Subscription Plans</h1>
+          <p className="text-sm text-gray-500">Manage pricing tiers and features</p>
+        </div>
+        <button 
+          onClick={openCreateModal} 
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors shadow-sm"
+        >
+          <Plus size={18} />
+          Create Plan
         </button>
       </div>
 
       {/* Global Discount Card */}
-      <div
-        style={{
-          backgroundColor: "#fff",
-          borderRadius: "12px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-          border: "1px solid #eaeaea",
-          padding: "24px",
-          marginBottom: "24px",
-          backgroundColor: "#fffbeb",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "20px",
-          }}
-        >
-          <div>
-            <h3
-              style={{
-                color: "#d97706",
-                fontSize: "1.1rem",
-                fontWeight: "700",
-                margin: "0 0 8px 0",
-              }}
-            >
-              Global Annual Discount
-            </h3>
-            <p style={{ color: "#666", fontSize: "0.9rem", margin: 0 }}>
-              Apply a discount to all annual plans displayed on the pricing page
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
+      <div className="bg-orange-50/50 border border-orange-100 rounded-xl p-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-orange-100 text-orange-600 rounded-lg">
+              <Percent size={24} />
+            </div>
             <div>
-              <label
-                style={{ ...labelStyle, color: "#d97706", marginBottom: "6px" }}
-              >
-                Discount %
-              </label>
+              <h3 className="text-lg font-bold text-gray-900">Global Annual Discount</h3>
+              <p className="text-sm text-gray-500 max-w-md mt-1">
+                This percentage is applied to all annual plans. It's automatically calculated when setting prices but can be overridden here.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="relative">
               <input
                 type="number"
                 min="0"
                 max="100"
                 value={discountInput}
                 onChange={(e) => setDiscountInput(e.target.value)}
-                placeholder="0"
-                style={{
-                  padding: "12px",
-                  borderRadius: "8px",
-                  border: "2px solid #d97706",
-                  backgroundColor: "#fff",
-                  color: "#111",
-                  fontSize: "1.1rem",
-                  fontWeight: "700",
-                  width: "120px",
-                  textAlign: "center",
-                  outline: "none",
-                }}
+                className="w-24 px-4 py-2 text-center text-lg font-bold text-orange-600 border-2 border-orange-200 rounded-lg outline-none focus:border-orange-500 bg-white"
               />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">%</span>
             </div>
             <button
               onClick={updateGlobalDiscount}
               disabled={discountLoading}
-              style={{
-                padding: "12px 24px",
-                backgroundColor: "#d97706",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                cursor: discountLoading ? "not-allowed" : "pointer",
-                fontWeight: "600",
-                fontSize: "0.95rem",
-                opacity: discountLoading ? 0.7 : 1,
-              }}
+              className="px-6 py-2.5 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
             >
-              {discountLoading ? "Saving..." : "Apply"}
+              {discountLoading ? "Saving..." : "Update"}
             </button>
           </div>
         </div>
-        <p
-          style={{
-            color: "#d97706",
-            fontSize: "0.85rem",
-            margin: "12px 0 0 0",
-            fontWeight: "500",
-          }}
-        >
-          Current Global Discount: <strong>{globalDiscount}%</strong>
-        </p>
       </div>
 
-      {/* Table Container */}
-      {loading ? (
-        <p style={{ color: "#666" }}>Loading plans...</p>
-      ) : (
-        <div
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: "12px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-            overflow: "hidden",
-            border: "1px solid #eaeaea",
-          }}
-        >
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              backgroundColor: "#fff",
-            }}
-          >
-            <thead>
-              <tr
-                style={{
-                  backgroundColor: "#f9fafb",
-                  borderBottom: "1px solid #eaeaea",
-                  textAlign: "left",
-                }}
-              >
-                <th
-                  style={{
-                    padding: "16px 24px",
-                    color: "#666",
-                    fontWeight: "600",
-                    fontSize: "0.85rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  PLAN NAME
-                </th>
-                <th
-                  style={{
-                    padding: "16px 24px",
-                    color: "#666",
-                    fontWeight: "600",
-                    fontSize: "0.85rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  PRICE (MO)
-                </th>
-                <th
-                  style={{
-                    padding: "16px 24px",
-                    color: "#666",
-                    fontWeight: "600",
-                    fontSize: "0.85rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  STATUS
-                </th>
-                <th
-                  style={{
-                    padding: "16px 24px",
-                    color: "#666",
-                    fontWeight: "600",
-                    fontSize: "0.85rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    textAlign: "right",
-                  }}
-                >
-                  ACTIONS
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {plans.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={4}
-                    style={{ padding: 30, textAlign: "center", color: "#888" }}
-                  >
-                    No plans found.
-                  </td>
-                </tr>
-              )}
-              {plans.map((p) => (
-                <tr key={p._id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                  <td style={{ padding: "16px 24px", verticalAlign: "middle" }}>
-                    <div
-                      style={{
-                        fontWeight: "600",
-                        color: "#111",
-                        fontSize: "0.95rem",
-                      }}
-                    >
-                      {p.name}
-                    </div>
-                    {p.recommended && (
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "#d97706",
-                          marginTop: 4,
-                          fontWeight: "500",
-                        }}
-                      >
-                        ★ Recommended
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        fontSize: "0.85rem",
-                        color: "#888",
-                        marginTop: 2,
-                      }}
-                    >
-                      {p.description}
-                    </div>
-                  </td>
-                  <td
-                    style={{
-                      padding: "16px 24px",
-                      verticalAlign: "middle",
-                      color: "#333",
-                      fontWeight: "500",
-                    }}
-                  >
-                    ₹{p.price_monthly}
-                  </td>
+      <DataTable 
+        title="Active Plans"
+        columns={columns}
+        data={plans}
+        searchPlaceholder="Search plans..."
+      />
 
-                  {/* Status Toggle */}
-                  <td style={{ padding: "16px 24px", verticalAlign: "middle" }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
-                      }}
-                    >
-                      <label className="toggle-switch">
-                        <input
-                          type="checkbox"
-                          checked={p.status === "active"}
-                          onChange={() => toggleStatus(p._id, p.status)}
-                        />
-                        <span className="slider"></span>
-                      </label>
-                    </div>
-                  </td>
-
-                  {/* Actions */}
-                  <td
-                    style={{
-                      padding: "16px 24px",
-                      textAlign: "right",
-                      verticalAlign: "middle",
-                    }}
-                  >
-                    <button
-                      onClick={() => openEditModal(p)}
-                      style={{
-                        background: "transparent",
-                        border: "1px solid #ddd",
-                        color: "#333",
-                        padding: "6px 14px",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        marginRight: "8px",
-                        fontSize: "0.85rem",
-                        fontWeight: "500",
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => remove(p._id)}
-                      style={{
-                        background: "transparent",
-                        border: "1px solid #fee2e2",
-                        color: "#ef4444",
-                        padding: "6px 14px",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        fontSize: "0.85rem",
-                        fontWeight: "500",
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* --- Modal (Create & Edit) --- */}
+      {/* Modal */}
       {showModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100vw",
-            height: "100vh",
-            backgroundColor: "rgba(0,0,0,0.5)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: "#fff",
-              padding: "32px",
-              borderRadius: "16px",
-              width: "600px",
-              maxWidth: "95%",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
-              border: "1px solid #f0f0f0",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: 24,
-                marginBottom: 24,
-                color: "#111",
-                fontWeight: "700",
-              }}
-            >
-              {editingId ? "Edit Plan" : "Create New Plan"}
-            </h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <h2 className="text-xl font-bold text-gray-900">
+                {editingId ? "Edit Plan" : "Create New Plan"}
+              </h2>
+              <button onClick={() => setShowModal(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+                <AlertCircle size={20} className="rotate-45" /> {/* Using generic icon as close */}
+              </button>
+            </div>
 
-            <form
-              onSubmit={handleSubmit}
-              style={{ display: "flex", flexDirection: "column", gap: "20px" }}
-            >
-              {/* Basic Info */}
-              <div>
-                <label style={labelStyle}>Plan Name</label>
-                <input
-                  required
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Pro Plan"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Description</label>
-                <input
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  placeholder="Short marketing description"
-                  style={inputStyle}
-                />
-              </div>
-
-              {/* PRICING WITH DISCOUNT CALCULATOR */}
-              <div
-                style={{ display: "flex", gap: "15px", alignItems: "flex-end" }}
-              >
-                <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Monthly Price (₹)</label>
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Plan Name</label>
                   <input
                     required
-                    type="number"
-                    name="price_monthly"
-                    value={formData.price_monthly}
+                    name="name"
+                    value={formData.name}
                     onChange={handleInputChange}
-                    style={inputStyle}
+                    placeholder="e.g. Pro Plan"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                   />
                 </div>
 
-                {/* DISCOUNT INPUT */}
-                <div style={{ width: "110px" }}>
-                  <label style={{ ...labelStyle, color: "#d97706" }}>
-                    Discount %
-                  </label>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                   <input
-                    type="number"
-                    placeholder="%"
-                    value={discountPercent}
-                    onChange={handleDiscountChange}
-                    style={{
-                      ...inputStyle,
-                      borderColor: "#d97706",
-                      backgroundColor: "#fffbeb",
-                      fontWeight: "600",
-                      color: "#d97706",
-                    }}
-                  />
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Yearly Price (₹)</label>
-                  <input
-                    type="number"
-                    name="price_yearly"
-                    placeholder="Auto-calculated"
-                    value={formData.price_yearly}
+                    name="description"
+                    value={formData.description}
                     onChange={handleInputChange}
-                    style={inputStyle}
+                    placeholder="Short marketing description"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                   />
                 </div>
-              </div>
-              {/* Pricing Helper Text */}
-              <div
-                style={{
-                  marginTop: -15,
-                  fontSize: "0.8rem",
-                  color: "#888",
-                  textAlign: "right",
-                }}
-              >
-                {discountPercent && formData.price_monthly ? (
-                  <span>
-                    {formData.price_monthly} x 12 minus {discountPercent}%
-                  </span>
-                ) : (
-                  <span>Set Monthly Price and Discount to auto-calculate</span>
-                )}
-              </div>
 
-              {/* Features Box */}
-              <div
-                style={{
-                  padding: 20,
-                  border: "1px solid #eee",
-                  borderRadius: 12,
-                  backgroundColor: "#f9fafb",
-                }}
-              >
-                <p
-                  style={{
-                    fontWeight: "600",
-                    marginBottom: 16,
-                    fontSize: "0.9rem",
-                    color: "#333",
-                  }}
-                >
-                  Features Enabled
-                </p>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                  }}
-                >
-                  {[
-                    { key: "ai_post_generation", label: "AI Post Generation" },
-                    { key: "caption_generator", label: "Caption Generator" },
-                    { key: "hashtag_generator", label: "Hashtag Generator" },
-                    { key: "content_calendar", label: "Content Calendar" },
-                    { key: "smart_scheduling", label: "Smart Scheduling" },
-                    { key: "priority_support", label: "Priority Support" },
-                  ].map((feat) => (
-                    <label
-                      key={feat.key}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px",
-                        cursor: "pointer",
-                      }}
-                    >
+                {/* Pricing Section */}
+                <div className="md:col-span-2 bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-4">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <Tag size={16} /> Pricing Configuration
+                  </h3>
+                  
+                  <div className="grid grid-cols-3 gap-4 items-end">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Monthly Price (₹)</label>
                       <input
-                        type="checkbox"
-                        name={`feat_${feat.key}`}
-                        checked={formData.features[feat.key]}
+                        required
+                        type="number"
+                        name="price_monthly"
+                        value={formData.price_monthly}
                         onChange={handleInputChange}
-                        style={{
-                          accentColor: "#000",
-                          width: 18,
-                          height: 18,
-                          cursor: "pointer",
-                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500"
                       />
-                      <span style={{ fontSize: "0.9rem", color: "#4b5563" }}>
-                        {feat.label}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-medium text-orange-600 mb-1">Discount %</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={discountPercent}
+                        onChange={handleDiscountChange}
+                        placeholder="0"
+                        className="w-full px-3 py-2 border border-orange-200 rounded-lg outline-none focus:border-orange-500 bg-white"
+                      />
+                    </div>
 
-              {/* Limits */}
-              <div style={{ display: "flex", gap: "20px" }}>
-                <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Platforms Allowed</label>
-                  <input
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Yearly Price (₹)</label>
+                      <input
+                        type="number"
+                        name="price_yearly"
+                        value={formData.price_yearly}
+                        onChange={handleInputChange}
+                        readOnly
+                        className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-gray-500 cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Features Toggles */}
+                <div className="md:col-span-2 space-y-3">
+                  <h3 className="font-semibold text-gray-900 text-sm">Features</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      { key: "ai_post_generation", label: "AI Post Generation" },
+                      { key: "caption_generator", label: "Caption Generator" },
+                      { key: "hashtag_generator", label: "Hashtag Generator" },
+                      { key: "content_calendar", label: "Content Calendar" },
+                      { key: "smart_scheduling", label: "Smart Scheduling" },
+                      { key: "priority_support", label: "Priority Support" },
+                    ].map((feat) => (
+                      <label key={feat.key} className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          name={`feat_${feat.key}`}
+                          checked={formData.features[feat.key]}
+                          onChange={handleInputChange}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">{feat.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Numeric/Select Limits */}
+                <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">Posts Per Month</label>
+                   <input
+                    name="feat_posts_per_month"
+                    value={formData.features.posts_per_month}
+                    onChange={handleInputChange}
+                    placeholder="e.g. 15 or unlimited"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500"
+                  />
+                </div>
+                
+                <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">Platforms Allowed</label>
+                   <input
                     type="number"
                     name="feat_platforms_allowed"
                     value={formData.features.platforms_allowed}
                     onChange={handleInputChange}
-                    style={inputStyle}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500"
                   />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Posts / Month</label>
-                  <input
-                    type="text"
-                    name="feat_posts_per_month"
-                    value={formData.features.posts_per_month}
-                    onChange={handleInputChange}
-                    style={inputStyle}
-                  />
+
+                <div className="md:col-span-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      name="recommended"
+                      checked={formData.recommended}
+                      onChange={handleInputChange}
+                      className="w-4 h-4 text-orange-500 rounded focus:ring-orange-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Mark as Recommended Plan</span>
+                  </label>
                 </div>
-              </div>
-
-              {/* Recommendation Toggle */}
-              <div style={{ marginTop: 4 }}>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    name="recommended"
-                    checked={formData.recommended}
-                    onChange={handleInputChange}
-                    style={{ width: 18, height: 18, accentColor: "#d97706" }}
-                  />
-                  <span
-                    style={{
-                      color: "#d97706",
-                      fontWeight: "600",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    Highlight as "Recommended"
-                  </span>
-                </label>
-              </div>
-
-              {/* Footer Actions */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: "12px",
-                  marginTop: "10px",
-                  borderTop: "1px solid #f0f0f0",
-                  paddingTop: "24px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  style={{
-                    padding: "12px 24px",
-                    background: "transparent",
-                    color: "#555",
-                    border: "1px solid #ddd",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontWeight: "500",
-                    fontSize: "0.95rem",
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  style={{
-                    padding: "12px 24px",
-                    background: "#000",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontWeight: "600",
-                    fontSize: "0.95rem",
-                  }}
-                >
-                  {submitting
-                    ? "Saving..."
-                    : editingId
-                      ? "Update Plan"
-                      : "Create Plan"}
-                </button>
               </div>
             </form>
+            
+            <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex gap-3 justify-end">
+              <button 
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-sm transition-all"
+              >
+                 {submitting ? "Saving..." : (editingId ? "Update Plan" : "Create Plan")}
+              </button>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
-
-// Helper styles for cleaner JSX
-const labelStyle = {
-  display: "block",
-  fontSize: "0.85rem",
-  fontWeight: "600",
-  marginBottom: 8,
-  color: "#4b5563",
-};
-
-const inputStyle = {
-  width: "100%",
-  padding: "12px",
-  borderRadius: "8px",
-  border: "1px solid #e5e7eb",
-  background: "#fff",
-  color: "#111",
-  fontSize: "0.95rem",
-  outline: "none",
-  transition: "border 0.2s",
-};

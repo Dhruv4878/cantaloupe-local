@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import StatsCard from "@/components/ui/admin/StatsCard";
+import { Users, FileText, Activity, Calendar, AlertCircle, TrendingUp } from "lucide-react";
 
 export default function SuperAdminStatsPage() {
   const [stats, setStats] = useState(null);
@@ -48,93 +50,93 @@ export default function SuperAdminStatsPage() {
   }, []);
 
   if (loading) {
-    return <div>Loading stats...</div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
 
   if (!stats) {
-    return <div>Error fetching stats.</div>;
+    return (
+      <div className="p-4 bg-red-50 text-red-600 rounded-lg border border-red-200">
+        Error fetching stats. Please try again later.
+      </div>
+    );
   }
 
   return (
-    <div>
-      <h1
-        style={{ fontSize: "1.8rem", fontWeight: "600", marginBottom: "20px" }}
-      >
-        Platform Statistics
-      </h1>
-
-      {/* KPI CARDS */}
-      <div
-        style={{
-          display: "flex",
-          gap: "20px",
-          flexWrap: "wrap",
-          marginBottom: "30px",
-        }}
-      >
-        {/* Total Users */}
-        <StatCard title="Total Users" value={stats.totalUsers} />
-
-        {/* Total Posts */}
-        <StatCard title="Total Posts" value={stats.totalPosts} />
-
-        {/* Reserved Future Metrics */}
-        <StatCard title="Active Users" value={stats.activeUsers || 0} />
-        <StatCard
-          title="Weekly Active Users"
-          value={stats.weeklyActiveUsers || 0}
-        />
-        <StatCard title="Scheduled Posts" value={stats.scheduledPosts || 0} />
-        <StatCard title="Failed Posts" value={stats.failedPosts || 0} />
-      </div>
-
-      {/* FUTURE: CHARTS SECTION */}
-      <div
-        style={{
-          padding: "20px",
-          background: "#fff",
-          borderRadius: "10px",
-          boxShadow: "0 0 10px rgba(0,0,0,0.08)",
-        }}
-      >
-        <h2 style={{ marginBottom: "20px", fontSize: "1.4rem" }}>Analytics</h2>
-
-        <p style={{ opacity: 0.7 }}>
-          Chart components (Recharts / Chart.js) can be added here once
-          additional data is available from backend. The layout is ready for
-          extension.
+    <div className="space-y-8">
+      {/* Page Header */}
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Real-time insights and performance metrics.
         </p>
       </div>
-    </div>
-  );
-}
 
-// ----------------------------------------------------------
-// COMPONENT: KPI Card
-// ----------------------------------------------------------
+      {/* KPI Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <StatsCard 
+          title="Total Users" 
+          value={stats.totalUsers} 
+          icon={Users}
+          trend={{ value: 12, label: "vs last month", isPositive: true }}
+        />
+        <StatsCard 
+          title="Total Posts" 
+          value={stats.totalPosts} 
+          icon={FileText}
+          trend={{ value: 8, label: "vs last month", isPositive: true }}
+        />
+        <StatsCard 
+          title="Active Users" 
+          value={stats.activeUsers} 
+          icon={Activity}
+          description="Users active in last 30 days"
+        />
+        <StatsCard 
+          title="Weekly Active" 
+          value={stats.weeklyActiveUsers} 
+          icon={TrendingUp}
+          description="Users active in last 7 days"
+        />
+        <StatsCard 
+          title="Scheduled" 
+          value={stats.scheduledPosts} 
+          icon={Calendar}
+          description="Posts waiting to be published"
+        />
+        <StatsCard 
+          title="Failed Posts" 
+          value={stats.failedPosts} 
+          icon={AlertCircle}
+          trend={{ value: 2, label: "vs last month", isPositive: false }}
+          className="bg-red-50/30 border-red-100"
+        />
+      </div>
 
-function StatCard({ title, value }) {
-  return (
-    <div
-      style={{
-        flex: "1",
-        minWidth: "240px",
-        padding: "20px",
-        background: "#fff",
-        borderRadius: "10px",
-        boxShadow: "0 0 10px rgba(0,0,0,0.08)",
-      }}
-    >
-      <h3 style={{ fontSize: "1.1rem", margin: 0 }}>{title}</h3>
-      <p
-        style={{
-          fontSize: "2rem",
-          fontWeight: "700",
-          marginTop: "10px",
-        }}
-      >
-        {value}
-      </p>
+      {/* Analytics Placeholder */}
+      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-gray-900">Analytics Trends</h3>
+          <select className="text-sm border-gray-200 rounded-lg text-gray-500 focus:ring-blue-500 focus:border-blue-500">
+            <option>Last 7 days</option>
+            <option>Last 30 days</option>
+            <option>Last 90 days</option>
+          </select>
+        </div>
+        
+        <div className="h-64 flex flex-col items-center justify-center bg-gray-50 rounded-xl border border-dashed border-gray-200 text-center p-6">
+          <div className="bg-white p-3 rounded-full shadow-sm mb-3">
+            <TrendingUp className="text-blue-500" size={24} />
+          </div>
+          <h4 className="text-gray-900 font-medium mb-1">Chart Visualization</h4>
+          <p className="text-gray-500 text-sm max-w-sm">
+            Detailed analytics charts will appear here once connected to historical data.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

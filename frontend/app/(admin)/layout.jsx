@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Menu,
   Bell,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/components/Contentgenerate/Sidebar";
+import { PostCountProvider, usePostCount } from "@/lib/postCountContext";
 
 const DARK_BG = "#070616";
 
@@ -264,6 +265,7 @@ const Header = ({ toggleSidebar, usedPosts = 0 }) => {
   const router = useRouter();
   const segments = pathname.split("/").filter(Boolean);
   const last = segments[segments.length - 1] || "dashboard";
+  const { refreshTrigger } = usePostCount();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -301,51 +303,61 @@ const Header = ({ toggleSidebar, usedPosts = 0 }) => {
     }
   }, []);
 
-  useEffect(() => {
-    const fetchProfileAndSubscription = async () => {
-      try {
-        setLoading(true);
-        const token = requireToken();
+  // Fetch profile and subscription data function
+  const fetchProfileAndSubscription = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = requireToken();
 
-        if (!token) {
-          setLoading(false);
-          return;
-        }
-
-        // Fetch profile data
-        const profileResponse = await fetch(`${apiUrl}/profile/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json();
-          setProfile(profileData);
-
-          // Update userEmail from profile if available
-          if (profileData?.user?.email) {
-            setUserEmail(profileData.user.email);
-          }
-        }
-
-        // Fetch subscription data
-        const subscriptionResponse = await fetch(`${apiUrl}/subscription/current`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (subscriptionResponse.ok) {
-          const subscriptionData = await subscriptionResponse.json();
-          setSubscriptionData(subscriptionData);
-        }
-
-      } catch (error) {
-        console.error("Error fetching profile and subscription:", error);
-      } finally {
+      if (!token) {
         setLoading(false);
+        return;
       }
-    };
 
-    fetchProfileAndSubscription();
+      // Fetch profile data
+      const profileResponse = await fetch(`${apiUrl}/profile/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (profileResponse.ok) {
+        const profileData = await profileResponse.json();
+        setProfile(profileData);
+
+        // Update userEmail from profile if available
+        if (profileData?.user?.email) {
+          setUserEmail(profileData.user.email);
+        }
+      }
+
+      // Fetch subscription data
+      const subscriptionResponse = await fetch(`${apiUrl}/subscription/current`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (subscriptionResponse.ok) {
+        const subscriptionData = await subscriptionResponse.json();
+        setSubscriptionData(subscriptionData);
+      }
+
+    } catch (error) {
+      console.error("Error fetching profile and subscription:", error);
+    } finally {
+      setLoading(false);
+    }
   }, [apiUrl]);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    fetchProfileAndSubscription();
+  }, [fetchProfileAndSubscription]);
+
+  // Refetch when refreshTrigger changes (after content generation)
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      console.log('🔄 Refreshing profile and subscription due to trigger:', refreshTrigger);
+      fetchProfileAndSubscription();
+    }
+  }, [refreshTrigger, fetchProfileAndSubscription]);
 
   /* ----------------------------- SIGN OUT ----------------------------- */
   const handleSignOut = () => {
@@ -356,7 +368,13 @@ const Header = ({ toggleSidebar, usedPosts = 0 }) => {
   /* ----------------------------- PAGE TITLES ----------------------------- */
   const titleMap = {
     dashboard: "Dashboard",
+    generatepost: "Generate Post",
     generate: "Generate Post",
+    "generate-scratch": "Generate from Scratch",
+    "generate-templates": "Template Library",
+    "generate-suggestions": "Smart Suggestions",
+    "template-customizer": "Customize Template",
+    post: "Post Editor",
     calender: "Calendar",
     connectplatform: "Linked Accounts",
     setting: "Settings",
@@ -457,9 +475,10 @@ const Header = ({ toggleSidebar, usedPosts = 0 }) => {
 };
 
 /* ----------------------------- Layout ----------------------------- */
-export default function AdminLayout({ children }) {
+function AdminLayoutContent({ children }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [usedPosts, setUsedPosts] = useState(0);
+  const { refreshTrigger, updatePostCount } = usePostCount();
 
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api",
@@ -472,6 +491,46 @@ export default function AdminLayout({ children }) {
     return token && token !== "null" ? token : null;
   };
 
+  // Fetch post count function
+  const fetchPostCount = useCallback(async () => {
+    try {
+      const token = requireToken();
+      if (!token) {
+        setUsedPosts(0);
+        updatePostCount(0);
+        return;
+      }
+
+      const res = await fetch(`${apiUrl}/posts/count`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        console.log('Post count response:', data);
+        
+        const count = data.count ?? 0;
+        setUsedPosts(count);
+        updatePostCount(count);
+        
+        // Store additional info for debugging
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("postCountType", data.countType || "credit");
+          sessionStorage.setItem("postLimit", String(data.limit || 0));
+        }
+      } else {
+        setUsedPosts(0);
+        updatePostCount(0);
+      }
+    } catch (err) {
+      console.error("Error fetching post count:", err);
+      setUsedPosts(0);
+      updatePostCount(0);
+    }
+  }, [apiUrl, updatePostCount]);
+
   // Fetch initial post count on mount
   useEffect(() => {
     const token = sessionStorage.getItem("authToken");
@@ -480,44 +539,16 @@ export default function AdminLayout({ children }) {
       return;
     }
 
-    // Fetch initial post count
-    const fetchInitialPostCount = async () => {
-      try {
-        const token = requireToken();
-        if (!token) {
-          setUsedPosts(0);
-          return;
-        }
+    fetchPostCount();
+  }, [fetchPostCount]);
 
-        const res = await fetch(`${apiUrl}/posts/count`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          console.log('Post count response:', data);
-          
-          // The new API returns count, limit, and countType
-          setUsedPosts(data.count ?? 0);
-          
-          // Store additional info for debugging
-          if (typeof window !== "undefined") {
-            sessionStorage.setItem("postCountType", data.countType || "credit");
-            sessionStorage.setItem("postLimit", String(data.limit || 0));
-          }
-        } else {
-          setUsedPosts(0);
-        }
-      } catch (err) {
-        console.error("Error fetching initial post count:", err);
-        setUsedPosts(0);
-      }
-    };
-
-    fetchInitialPostCount();
-  }, [apiUrl]);
+  // Refresh post count when refreshTrigger changes (after post generation)
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      console.log('🔄 Refreshing post count due to trigger:', refreshTrigger);
+      fetchPostCount();
+    }
+  }, [refreshTrigger, fetchPostCount]);
 
   // Sync usedPosts to sessionStorage (for backward compatibility if needed)
   useEffect(() => {
@@ -550,22 +581,30 @@ export default function AdminLayout({ children }) {
       />
 
       <div className="flex-1 flex flex-col z-10">
-        <div className="max-w-6xl mx-auto w-full px-4 lg:px-8 py-4 flex-1 flex flex-col">
+        <div className="max-w-6xl mx-auto w-full px-4 lg:px-3 py-4 flex-1 flex flex-col">
           <Header
             toggleSidebar={() => setIsSidebarOpen((v) => !v)}
             usedPosts={usedPosts}
           />
-          <main className="flex-1 pb-8">
+          <main className="flex-1 pb-4">
             {React.cloneElement(children, {
               onPostCountUpdate: setUsedPosts,
             })}
           </main>
 
-          <footer className="text-center text-gray-500 text-sm py-6">
+          <footer className="text-center text-gray-500 text-sm py-4">
             © 2025 Generation Next.AI Social Manager. All rights reserved.
           </footer>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AdminLayout({ children }) {
+  return (
+    <PostCountProvider>
+      <AdminLayoutContent>{children}</AdminLayoutContent>
+    </PostCountProvider>
   );
 }

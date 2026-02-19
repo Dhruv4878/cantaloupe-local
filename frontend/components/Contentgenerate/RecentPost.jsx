@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import GradientButton from "../GradientButton";
 
@@ -58,6 +58,8 @@ export default function Generatedpost() {
   const [businessName, setBusinessName] = useState("");
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [postFilter, setPostFilter] = useState("all"); // "all", "today", "week", "month"
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Fetch business profile
   useEffect(() => {
@@ -184,8 +186,39 @@ export default function Generatedpost() {
 
   const goToGenerate = () => {
     if (!canNavigateToGenerate()) return;
-    router.push("/generate");
+    router.push("/generatepost");
   };
+
+  // Filter posts based on selected time period
+  const filterPostsByDate = (posts, filter) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // Calculate start of week (assuming week starts on Sunday)
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay());
+    
+    // Calculate start of month
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    return posts.filter((post) => {
+      if (!post.createdAt) return false;
+      const postDate = new Date(post.createdAt);
+      
+      switch (filter) {
+        case "today":
+          return postDate >= today;
+        case "week":
+          return postDate >= startOfWeek;
+        case "month":
+          return postDate >= startOfMonth;
+        default:
+          return true;
+      }
+    });
+  };
+
+  const filteredItems = filterPostsByDate(items, postFilter);
 
   return (
     <div className="text-white">
@@ -211,10 +244,75 @@ export default function Generatedpost() {
           </p>
         </div>
 
-        <GradientButton className="hidden sm:inline-flex" onClick={goToGenerate}>
-  <Plus size={14}/>
-  Generate New Content
-</GradientButton>
+        <div className="flex items-center gap-3">
+          {/* Filter Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="px-4 py-2 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-all flex items-center gap-2 text-sm font-medium border border-white/10"
+            >
+              <span>
+                {postFilter === "all" ? "All Posts" : postFilter === "today" ? "Today" : postFilter === "week" ? "This Week" : "This Month"}
+              </span>
+              <ChevronDown size={16} className={`transition-transform ${isDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isDropdownOpen && (
+              <div className="absolute top-full mt-2 left-0 w-40 rounded-lg bg-[#1a1a1a] border border-white/10 shadow-xl z-50 overflow-hidden">
+                <button
+                  onClick={() => {
+                    setPostFilter("all");
+                    setIsDropdownOpen(false);
+                  }}
+                  className={`w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors ${
+                    postFilter === "all" ? "bg-orange-500/20 text-orange-400" : "text-gray-300"
+                  }`}
+                >
+                  All Posts
+                </button>
+                <button
+                  onClick={() => {
+                    setPostFilter("today");
+                    setIsDropdownOpen(false);
+                  }}
+                  className={`w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors ${
+                    postFilter === "today" ? "bg-orange-500/20 text-orange-400" : "text-gray-300"
+                  }`}
+                >
+                  Today
+                </button>
+                <button
+                  onClick={() => {
+                    setPostFilter("week");
+                    setIsDropdownOpen(false);
+                  }}
+                  className={`w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors ${
+                    postFilter === "week" ? "bg-orange-500/20 text-orange-400" : "text-gray-300"
+                  }`}
+                >
+                  This Week
+                </button>
+                <button
+                  onClick={() => {
+                    setPostFilter("month");
+                    setIsDropdownOpen(false);
+                  }}
+                  className={`w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors ${
+                    postFilter === "month" ? "bg-orange-500/20 text-orange-400" : "text-gray-300"
+                  }`}
+                >
+                  This Month
+                </button>
+              </div>
+            )}
+          </div>
+
+          <GradientButton className="hidden sm:inline-flex" onClick={goToGenerate}>
+            <Plus size={14}/>
+            Generate New Content
+          </GradientButton>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -240,9 +338,16 @@ export default function Generatedpost() {
               <span>Generate Your First Post</span>
             </OrangeButton>
           </GlassCard>
+        ) : filteredItems.length === 0 ? (
+          <GlassCard className="w-full py-10 px-6 text-center flex flex-col items-center">
+            <p className="text-lg font-semibold text-white">No posts found</p>
+            <p className="text-gray-400 text-sm mt-1 max-w-md">
+              No posts found for {postFilter === "all" ? "all time" : postFilter === "today" ? "today" : postFilter === "week" ? "this week" : "this month"}. Try generating new content.
+            </p>
+          </GlassCard>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
-            {items.map((post) => (
+            {filteredItems.map((post) => (
               <GlassCard
                 key={post.id}
                 className="flex flex-col overflow-hidden"
@@ -306,7 +411,7 @@ export default function Generatedpost() {
                   <button
                     onClick={() =>
                       router.push(
-                        `/generatepost?id=${encodeURIComponent(post.id)}`
+                        `/post?id=${encodeURIComponent(post.id)}`
                       )
                     }
                     className="mt-4 w-full inline-flex items-center justify-center gap-2 border border-white/15 text-gray-100 hover:bg-white/10 px-3 py-2 rounded-lg font-semibold text-xs sm:text-sm transition"

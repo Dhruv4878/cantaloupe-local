@@ -91,8 +91,121 @@ class SuperAdminService {
     const User = require("../../models/userModel");
     const Post = require("../../models/postModel");
 
+    // Build query
+    const query = {};
+    const { status, plan } = options;
+
+    // Filter by Account Status
+    if (status === 'active') {
+      query.active = { $ne: false }; // undefined or true
+    } else if (status === 'disabled') {
+      query.active = false;
+    }
+
+    // Filter by Plan
+    if (plan) {
+      const UserSubscription = require("../../models/UserSubscription");
+      const Transaction = require("../../models/Transaction");
+      // Hardcoded credit packs IDs (matching creditController.js)
+      const CREDIT_PACK_IDS = ['starter', 'growth', 'power', 'agency'];
+
+      if (plan === 'free') {
+        // Users with NO active paid subscription
+        const activeSubs = await UserSubscription.find({ is_active: true }).select('user_id');
+        const activeUserIds = activeSubs.map(s => s.user_id);
+
+        if (query._id) {
+          query._id = { $in: query._id.$in, $nin: activeUserIds };
+        } else {
+          query._id = { $nin: activeUserIds };
+        }
+      } else if (CREDIT_PACK_IDS.includes(plan)) {
+        // Filter by Credit Pack Purchase
+        // Find all users who have successfully purchased this specific credit pack
+        const transactions = await Transaction.find({
+          'gateway_response.pack_id': plan,
+          $or: [{ status: 'succeeded' }, { status: 'completed' }]
+        }).select('user_id');
+
+        const userIds = transactions.map(t => t.user_id);
+
+        if (query._id) {
+          // Intersect with existing ID filter
+          query._id = { $in: userIds };
+        } else {
+          query._id = { $in: userIds };
+        }
+      } else {
+        // Users with active subscription to specific plan
+        const matchingSubs = await UserSubscription.find({
+          plan_id: plan,
+          is_active: true
+        }).select('user_id');
+
+        const matchingUserIds = matchingSubs.map(s => s.user_id);
+
+        if (query._id) {
+          query._id = { $in: matchingUserIds };
+        } else {
+          query._id = { $in: matchingUserIds };
+        }
+      }
+    }
+
+    if (options.search) {
+      // Helper to escape regex special characters
+      const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      const searchTerm = options.search.trim();
+
+      if (searchTerm) {
+        const parts = searchTerm.split(/\s+/).filter(Boolean);
+        const searchConditions = [];
+
+        if (parts.length > 1) {
+          // All parts must match something
+          searchConditions.push({
+            $and: parts.map(part => {
+              const regex = new RegExp(escapeRegex(part), 'i');
+              return {
+                $or: [
+                  { email: regex },
+                  { firstName: regex },
+                  { lastName: regex },
+                  { name: regex }
+                ]
+              };
+            })
+          });
+        } else {
+          const searchRegex = new RegExp(escapeRegex(searchTerm), 'i');
+          searchConditions.push({
+            $or: [
+              { email: searchRegex },
+              { firstName: searchRegex },
+              { lastName: searchRegex },
+              { name: searchRegex }
+            ]
+          });
+        }
+
+        // Combine with existing query properties if needed
+        if (Object.keys(query).length > 0) {
+          // If we already have filters (like active status or _id from plan), 
+          // we need to make sure search restricts it further.
+          // $and is robust here.
+          if (!query.$and) query.$and = [];
+          query.$and.push(...searchConditions);
+        } else {
+          // Just search
+          if (parts.length > 1) query.$and = searchConditions[0].$and;
+          else query.$or = searchConditions[0].$or; // flattened
+        }
+      }
+    }
+
     // Fetch users as plain objects
-    const users = await User.find({}).select("-password").lean();
+    const users = await User.find(query).select("-password").lean();
 
     // Aggregate counts grouped by userId — coerce the key to string to avoid
     // mismatches when userId is stored as ObjectId vs string
@@ -412,12 +525,7 @@ class SuperAdminService {
         throw new Error("No subscription found for this user");
       }
 
-      // Don't allow reactivating Free plans (they're always active)
-      if (subscription.plan_id?.name === 'Free') {
-        throw new Error("Free plans cannot be reactivated (they're always active)");
-      }
-
-      // Reactivate the existing paid subscription
+      // Reactivate the existing subscription (including Free)
       subscription.is_active = true;
       await subscription.save();
 
@@ -438,12 +546,7 @@ class SuperAdminService {
         throw new Error("No active subscription found for this user");
       }
 
-      // Don't allow deactivating Free plans
-      if (subscription.plan_id?.name === 'Free') {
-        throw new Error("Cannot deactivate Free plan");
-      }
-
-      // Suspend the paid subscription (don't delete it)
+      // Suspend the subscription (including Free)
       subscription.is_active = false;
       await subscription.save();
 

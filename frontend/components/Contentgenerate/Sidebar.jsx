@@ -34,7 +34,7 @@ const GlassCard = ({ children, className = "" }) => (
 
 const NAV_ITEMS = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
-  { name: "Generate Post", icon: Zap, href: "/generate" },
+  { name: "Generate Post", icon: Zap, href: "/generatepost" },
   { name: "Recent Post", icon: History, href: "/recentpost" },
   { name: "Linked Accounts", icon: Globe, href: "/connectplatform" },
   { name: "Calendar", icon: Calendar, href: "/calender" },
@@ -122,8 +122,8 @@ const Sidebar = ({ isOpen, toggleSidebar, usedPosts = 0 }) => {
       }
     }
 
-    // Always allow navigation to /generate - credit check happens on generate button click
-    if (item.href === "/generate") {
+    // Always allow navigation to /generatepost - credit check happens on generate button click
+    if (item.href === "/generatepost") {
       return (
         <Link href={item.href} className="block" onClick={toggleSidebar}>
           <div

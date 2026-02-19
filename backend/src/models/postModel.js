@@ -165,6 +165,76 @@ const PostSchema = new mongoose.Schema({
     default: false,
     index: true,
   },
+
+  /* ---------- Social Media Engagement Metrics ---------- */
+  metrics: {
+    type: {
+      lastSyncedAt: Date,
+
+      instagram: {
+        postId: String, // Instagram media ID
+        impressions: Number,
+        reach: Number,
+        engagement: Number,
+        likes: Number,
+        comments: Number,
+        saves: Number,
+        shares: Number,
+        videoViews: Number,
+        profileVisits: Number,
+        follows: Number,
+        fetchedAt: Date,
+      },
+
+      facebook: {
+        postId: String, // Facebook post ID
+        impressions: Number,
+        reach: Number,
+        engagement: Number,
+        reactions: Number, // Total reactions
+        reactionBreakdown: {
+          like: Number,
+          love: Number,
+          wow: Number,
+          haha: Number,
+          sad: Number,
+          angry: Number,
+        },
+        comments: Number,
+        shares: Number,
+        clicks: Number,
+        videoViews: Number,
+        fetchedAt: Date,
+      },
+
+      linkedin: {
+        postId: String, // LinkedIn share URN
+        impressions: Number,
+        clicks: Number,
+        engagement: Number,
+        likes: Number,
+        comments: Number,
+        shares: Number,
+        clickthroughRate: Number,
+        fetchedAt: Date,
+      },
+
+      twitter: {
+        postId: String, // Twitter tweet ID
+        impressions: Number,
+        engagements: Number,
+        likes: Number,
+        retweets: Number,
+        replies: Number,
+        quoteTweets: Number,
+        profileClicks: Number,
+        urlClicks: Number,
+        videoViews: Number,
+        fetchedAt: Date,
+      },
+    },
+    default: null,
+  },
 });
 
 /* ======================================================

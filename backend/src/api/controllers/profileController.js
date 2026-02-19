@@ -40,6 +40,9 @@ exports.getMyProfile = async (req, res) => {
 exports.createOrUpdateProfile = async (req, res) => {
   // Destructure all the expected fields from the form
   const {
+    name, // Expecting 'name' from frontend for User model update
+    firstName, // or specific fields
+    lastName,
     accountType,
     businessName,
     website,
@@ -52,6 +55,32 @@ exports.createOrUpdateProfile = async (req, res) => {
 
   if (!req.user || !req.user.id) {
     return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  // Update User model if name fields are provided
+  if (name || firstName || lastName) {
+    try {
+      const userUpdate = {};
+      if (name) {
+        const parts = name.trim().split(' ');
+        if (parts.length > 0) userUpdate.firstName = parts[0];
+        if (parts.length > 1) userUpdate.lastName = parts.slice(1).join(' ');
+      } else {
+        if (firstName) userUpdate.firstName = firstName;
+        if (lastName) userUpdate.lastName = lastName;
+      }
+
+      if (Object.keys(userUpdate).length > 0) {
+        await require('../../models/userModel').findByIdAndUpdate(
+          req.user.id,
+          { $set: userUpdate }
+        );
+      }
+    } catch (err) {
+      console.error('Error updating user name:', err);
+      // Continue to update profile even if name update fails, or return error?
+      // Proceeding is safer for now, but logging is important.
+    }
   }
 
   // Build the profile object to save to the database
