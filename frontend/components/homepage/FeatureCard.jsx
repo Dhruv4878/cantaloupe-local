@@ -16,6 +16,8 @@ const FeatureCard = ({ title, description, iconName }) => {
     <div
       className="
         feature-card
+        flex flex-col items-center justify-center
+        min-h-[220px] sm:min-h-[250px]
         px-4 py-5                     /* smallest screens */
         sm:px-6 sm:py-6               /* tablets */
         lg:px-8 lg:py-8               /* desktop */

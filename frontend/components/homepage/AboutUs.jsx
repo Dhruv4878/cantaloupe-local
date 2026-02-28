@@ -3,62 +3,71 @@ import React from "react";
 
 const AboutUs = () => {
   return (
-    <section
-      className="
-        w-full bg-[#070616]
-        py-4 sm:py-4 lg:py-4
-        px-4 sm:px-6 lg:px-0
-      "
-    >
+    <section className="relative w-full bg-[#070616] text-white py-6 sm:py-8 lg:py-12">
+      {/* Content Wrapper - matching other sections */}
       <div
         className="
-          mx-auto
+          relative mx-auto
           w-full
-          lg:w-[calc(100vw-200px)]     /* keep Figma width on desktop */
-          max-w-[1100px]
-          rounded-[24px] sm:rounded-[32px]
-          border border-white/10
-          bg-white/5
-          px-5 py-8
-          sm:px-8 sm:py-12
-          lg:px-10 lg:py-14
-          text-center
-          shadow-[0px_20px_120px_rgba(0,0,0,0.35)]
-          backdrop-blur
+          max-w-[calc(100vw-24px)]
+          sm:max-w-[calc(100vw-64px)]
+          lg:max-w-[calc(100vw-200px)]
         "
       >
-        <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-[0.4em] sm:tracking-[0.6em] text-white/60">
-          About PostGenerator.AI
-        </p>
-
-        <h2
+        <div
           className="
-            mt-3 sm:mt-4
-            text-2xl sm:text-3xl
-            lg:text-[44px]
-            font-extrabold text-white
-            leading-[130%] lg:leading-[140%]
-          "
-          style={{ fontFamily: '"Monument Extended", sans-serif' }}
-        >
-          Human teams, AI precision — one workspace for every launch.
-        </h2>
-
-        <p
-          className="
-            mx-auto mt-4 sm:mt-6
-            max-w-3xl
-            text-sm sm:text-base lg:text-lg
-            text-white/75
-            leading-[150%]
+            w-full
+            rounded-2xl sm:rounded-3xl
+            border border-white/10
+            bg-gradient-to-br from-white/[0.05] to-white/[0.02]
+            backdrop-blur-xl
+            px-6 py-8
+            sm:px-8 sm:py-10
+            lg:px-12 lg:py-12
+            text-center
+            shadow-2xl
           "
         >
-          We’re a remote collective of strategists, engineers, and editors
-          building a publishing OS for modern brands. From ideation to
-          reporting, the PostGenerator.AI platform keeps every teammate in sync so
-          campaigns move faster without losing the voice that makes them
-          memorable.
-        </p>
+          {/* Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/10 to-purple-500/10 border border-orange-500/20 backdrop-blur-sm mb-6">
+            <svg className="w-4 h-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs sm:text-sm font-medium text-gray-300 tracking-wider uppercase">About PostGenerator.AI</span>
+          </div>
+
+          <h2
+            className="
+              text-[1.5rem] md:text-[2rem] lg:text-[2.25rem] xl:text-[2.5rem]
+              font-extrabold
+              leading-[130%] lg:leading-[140%]
+              mb-5 sm:mb-6
+            "
+            style={{ fontFamily: "Monument Extended, sans-serif" }}
+          >
+            Human teams, AI precision —{" "}
+            <span className="bg-gradient-to-r from-orange-400 via-orange-500 to-yellow-500 bg-clip-text text-transparent">
+              one workspace for every launch.
+            </span>
+          </h2>
+
+          <p
+            className="
+              mx-auto
+              max-w-3xl
+              text-sm md:text-[1rem] lg:text-[1.125rem] xl:text-[1.125rem]
+              text-gray-400
+              leading-relaxed
+            "
+            style={{ fontFamily: "Poppins, sans-serif" }}
+          >
+            We're a remote collective of strategists, engineers, and editors
+            building a publishing OS for modern brands. From ideation to
+            reporting, the PostGenerator.AI platform keeps every teammate in sync so
+            campaigns move faster without losing the voice that makes them
+            memorable.
+          </p>
+        </div>
       </div>
     </section>
   );

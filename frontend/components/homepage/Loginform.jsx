@@ -103,12 +103,12 @@ export default function LoginForm() {
           if (res.ok) {
             try {
               sessionStorage.setItem("hasProfile", "true");
-            } catch (_) {}
+            } catch (_) { }
             router.replace("/dashboard");
           } else {
             try {
               sessionStorage.setItem("hasProfile", "false");
-            } catch (_) {}
+            } catch (_) { }
             router.replace("/businesses/create");
           }
         }
@@ -116,7 +116,7 @@ export default function LoginForm() {
         console.error("Auth check failed:", err);
         try {
           sessionStorage.setItem("hasProfile", "false");
-        } catch (_) {}
+        } catch (_) { }
         router.replace("/businesses/create");
       } finally {
         setIsLoading(false);
@@ -161,7 +161,7 @@ export default function LoginForm() {
           const normalizedEmail = (email || "").trim();
           if (normalizedEmail)
             sessionStorage.setItem("userEmail", normalizedEmail);
-        } catch (_) {}
+        } catch (_) { }
 
         const rawFlag =
           data && (data.hasProfile ?? data.hasflag ?? data.userHasProfile);
@@ -199,9 +199,9 @@ export default function LoginForm() {
                 router.push("/businesses/create");
               }
               return;
-            } catch (_) {}
+            } catch (_) { }
           }
-        } catch (_) {}
+        } catch (_) { }
 
         // Fallback: use the hasProfile flag from login response
         if (rawFlag !== undefined) {
@@ -218,7 +218,7 @@ export default function LoginForm() {
           // Default: no profile found, redirect to onboarding
           try {
             sessionStorage.setItem("hasProfile", "false");
-          } catch (_) {}
+          } catch (_) { }
           router.push("/businesses/create");
         }
       }
@@ -227,7 +227,7 @@ export default function LoginForm() {
       if (err.message && err.message.toLowerCase().includes("suspend")) {
         try {
           sessionStorage.removeItem("authToken");
-        } catch (_) {}
+        } catch (_) { }
       } else {
         setError(err.message);
       }
@@ -247,7 +247,7 @@ export default function LoginForm() {
       const user = result.user;
       try {
         if (user?.email) sessionStorage.setItem("userEmail", user.email);
-      } catch (_) {}
+      } catch (_) { }
 
       const idToken = await user.getIdToken();
 
@@ -295,9 +295,9 @@ export default function LoginForm() {
                   const profile = await profileRes.json();
                   const email = (profile?.user?.email || "").trim();
                   if (email) sessionStorage.setItem("userEmail", email);
-                } catch (_) {}
+                } catch (_) { }
               }
-            } catch (_) {}
+            } catch (_) { }
             router.push("/dashboard");
           } else {
             router.push("/businesses/create");
@@ -310,19 +310,19 @@ export default function LoginForm() {
             if (profileRes.ok) {
               try {
                 sessionStorage.setItem("hasProfile", "true");
-              } catch (_) {}
+              } catch (_) { }
               try {
                 const profile = await profileRes.json();
                 const email = (profile?.user?.email || "").trim();
                 if (email) sessionStorage.setItem("userEmail", email);
-              } catch (_) {}
+              } catch (_) { }
               router.push("/dashboard");
               return;
             }
-          } catch (_) {}
+          } catch (_) { }
           try {
             sessionStorage.setItem("hasProfile", "false");
-          } catch (_) {}
+          } catch (_) { }
           router.push("/businesses/create");
         }
       }
@@ -330,7 +330,7 @@ export default function LoginForm() {
       if (error.message && error.message.toLowerCase().includes("suspend")) {
         try {
           sessionStorage.removeItem("authToken");
-        } catch (_) {}
+        } catch (_) { }
       } else {
         setError(
           error.message || "Failed to sign in with Google. Please try again."
@@ -379,7 +379,7 @@ export default function LoginForm() {
           {/* header */}
           <div className="mb-8 space-y-2 text-center">
             <h1
-              className="text-[30px] sm:text-[32px] font-bold leading-tight"
+              className="text-[1.875rem] sm:text-[2rem] md:text-[2rem] lg:text-[2.25rem] font-bold leading-tight"
               style={{
                 background:
                   "linear-gradient(119.02deg, rgb(252,172,0) -22.94%, rgb(255,110,0) 83.73%)",
@@ -456,13 +456,13 @@ export default function LoginForm() {
                   placeholder="••••••••"
                 />
                 <div className="text-right mt-1">
-                   <button
+                  <button
                     type="button"
                     onClick={() => setIsForgotPasswordOpen(true)}
                     className="text-xs text-white/50 hover:text-white transition"
-                   >
-                     Forgot password?
-                   </button>
+                  >
+                    Forgot password?
+                  </button>
                 </div>
               </div>
 
@@ -504,7 +504,7 @@ export default function LoginForm() {
           </p>
         </div>
       </div>
-      
+
       <ForgotPasswordModal
         isOpen={isForgotPasswordOpen}
         onClose={() => setIsForgotPasswordOpen(false)}

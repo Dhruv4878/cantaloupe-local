@@ -139,6 +139,15 @@ body {
   }
 }
 
+@keyframes scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
 @font-face {
   font-family: "Monument Extended";
   src: url("/MonumentExtended-Regular.otf") format("opentype");
@@ -192,6 +201,10 @@ body {
     background: linear-gradient(to right, #FF8C00, #FFD700);
     background-position: right center;
   }
+
+  .animate-scroll {
+    animation: scroll 20s linear infinite;
+  }
 }
 
 @layer components {
@@ -222,18 +235,13 @@ body {
   .feature-card {
     position: relative;
     width: 100%;
-    /* max-width: 397px; */
     margin-inline: auto;
     min-height: 320px;
     border-radius: 32px;
     padding: 32px 32px 36px;
-    background: #ffffff03;
+    background: rgba(255, 255, 255, 0.03);
     backdrop-filter: blur(18px);
-
-    /* gradient border on same card */
-
-    border-image-source: linear-gradient(319.42deg, #c3c3c3 0%, #5a5a5a 100%);
-    border-image-slice: 1;
+    border: 1px solid rgba(255, 140, 0, 0.15);
 
     display: flex;
     flex-direction: column;
@@ -241,15 +249,13 @@ body {
     justify-content: flex-start;
     gap: 12px;
     text-align: center;
-    transition:
-      background 0.25s ease,
-      box-shadow 0.25s ease,
-      transform 0.25s ease;
+    transition: all 0.3s ease;
   }
 
   .feature-card:hover {
-    background: linear-gradient(180deg, rgba(255, 103, 0, 0) 0%, rgba(255, 103, 0, 0.1) 50%, rgba(255, 103, 0, 0.2) 100%);
-
+    transform: translateY(-4px);
+    border-color: rgba(255, 140, 0, 0.4);
+    background: linear-gradient(180deg, rgba(255, 103, 0, 0) 0%, rgba(255, 103, 0, 0.08) 50%, rgba(255, 103, 0, 0.15) 100%);
   }
 
   .feature-card-icon-wrapper {
@@ -262,6 +268,11 @@ body {
     align-items: center;
     justify-content: center;
     margin-bottom: 20px;
+    transition: all 0.3s ease;
+  }
+
+  .feature-card:hover .feature-card-icon-wrapper {
+    border-color: rgba(255, 140, 0, 0.5);
   }
 
   .feature-card-title {
@@ -279,7 +290,12 @@ body {
     font-size: 16px;
     line-height: 150%;
     color: #e5e7eb;
-    opacity: 0.5;
+    opacity: 0.7;
+    transition: opacity 0.3s ease;
+  }
+
+  .feature-card:hover .feature-card-description {
+    opacity: 0.9;
   }
 }
 

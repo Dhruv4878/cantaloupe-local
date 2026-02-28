@@ -1,6 +1,6 @@
 // Faq.jsx
 import React, { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 const faqData = [
   {
@@ -41,94 +41,132 @@ const Faq = () => {
   };
 
   return (
-    <section className="w-full bg-[#00001A] flex flex-col items-center px-4 sm:px-6 lg:px-0  pb-10 sm:pb-14 min-h-[640px]">
-      
-      {/* Heading */}
-      <div className="w-full max-w-[963px] mx-auto text-center mb-10 space-y-3">
-        <h1
-          className="
-            text-2xl sm:text-3xl md:text-[34px] lg:text-[38px]
-            font-extrabold text-white
-            leading-[140%] lg:leading-[150%]
-          "
-          style={{
-            fontFamily: "Monument Extended, sans-serif",
-            textShadow: "0px 0px 17.7px rgba(0, 0, 0, 0.7)",
-          }}
-        >
-          Got questions? We've Got Answers
-        </h1>
+    <section className="relative w-full bg-[#070616] text-white">
+      {/* Content Wrapper - matching other sections */}
+      <div
+        className="
+          relative mx-auto
+          w-full
+          max-w-[calc(100vw-24px)]
+          sm:max-w-[calc(100vw-64px)]
+          lg:max-w-[calc(100vw-200px)]
+        "
+      >
+        {/* Heading */}
+        <div className="text-center mb-12 sm:mb-14 lg:mb-16 space-y-4">
 
-        <p
-          className="
-            text-base sm:text-lg md:text-[20px] lg:text-[25px]
-            font-normal text-white/80 leading-[150%]
-          "
-          style={{ fontFamily: "Poppins, sans-serif" }}
-        >
-          Everything you need to know about how our platform works.
-        </p>
-      </div>
+          <h2
+            className="
+              text-[1.375rem] sm:text-[1.75rem] md:text-[2.125rem] lg:text-[2.375rem] xl:text-[2.625rem]
+              font-extrabold
+              leading-[120%] lg:leading-[130%]
+            "
+            style={{
+              fontFamily: "Monument Extended, sans-serif",
+            }}
+          >
+            Got questions?{" "}
+            <span className="bg-gradient-to-r from-orange-400 via-orange-500 to-yellow-500 bg-clip-text text-transparent">
+              We've Got Answers
+            </span>
+          </h2>
 
-      {/* FAQ Items */}
-      <div className="w-full max-w-[1030px] mx-auto mt-4 sm:mt-6 md:mt-10">
-        {faqData.map((item, index) => {
-          const isOpen = openIndex === index;
-          const isLast = index === faqData.length - 1;
+          <p
+            className="
+              text-[0.875rem] md:text-[1.125rem] lg:text-[1.125rem] xl:text-[1.25rem]
+              font-normal text-gray-400 leading-[150%]
+              max-w-2xl mx-auto
+            "
+            style={{ fontFamily: "Poppins, sans-serif" }}
+          >
+            Everything you need to know about how our platform works.
+          </p>
+        </div>
 
-          return (
-            <div key={index} className="w-full">
-              {/* Question */}
-              <button
-                onClick={() => toggleFaq(index)}
-                className="
-                  w-full flex justify-between items-center
-                  py-3 sm:py-4
-                  px-4 sm:px-6
-                  text-white
-                  text-sm sm:text-base md:text-[18px] lg:text-[20px]
-                  font-normal
-                  hover:bg-[#1A1A33]/60
-                  transition-colors
-                "
-                style={{
-                  borderTop: "0.46px solid rgba(255,255,255,0.6)",
-                  borderBottom: isLast && !isOpen ? "0.46px solid rgba(255,255,255,0.6)" : "none",
-                  fontFamily: "Poppins, sans-serif",
-                }}
-              >
-                <span className="text-left leading-normal pr-4">{item.q}</span>
-                {isOpen ? <ChevronUp /> : <ChevronDown />}
-              </button>
+        {/* FAQ Items Container with glassmorphism */}
+        <div className="w-full mx-auto rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-sm p-4 sm:p-6 lg:p-8">
+          {faqData.map((item, index) => {
+            const isOpen = openIndex === index;
+            const isLast = index === faqData.length - 1;
 
-              {/* Answer */}
-              <div
-                className={`
-                  overflow-hidden transition-all duration-300 ease-in-out
-                  ${isOpen ? "max-h-64 sm:max-h-80 opacity-100 py-3" : "max-h-0 opacity-0"}
-                `}
-                style={{
-                  borderBottom: isOpen || isLast ? "0.46px solid rgba(255,255,255,0.6)" : "none",
-                }}
-              >
-                <p
+            return (
+              <div key={index} className="w-full">
+                {/* Question */}
+                <button
+                  onClick={() => toggleFaq(index)}
                   className="
-                    px-4 sm:px-6
-                    text-gray-300
-                    text-sm sm:text-base md:text-lg
-                    leading-relaxed
+                    w-full flex justify-between items-center gap-4
+                    py-4 sm:py-5
+                    text-white
+                    text-sm md:text-[1rem] lg:text-[1rem] xl:text-[1.125rem]
+                    font-medium
+                    hover:text-orange-400
+                    transition-all duration-200
+                    group
                   "
-                  style={{ fontFamily: "Poppins, sans-serif" }}
+                  style={{
+                    borderBottom: !isOpen && !isLast ? "1px solid rgba(255,255,255,0.05)" : "none",
+                    fontFamily: "Poppins, sans-serif",
+                  }}
                 >
-                  {item.a}
-                </p>
-              </div>
+                  <span className="text-left leading-relaxed">{item.q}</span>
+                  <div className={`flex-shrink-0 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
+                    <ChevronDown className="w-5 h-5 text-orange-500" />
+                  </div>
+                </button>
 
-              {/* Divider for closed items (not last) */}
-              {!isOpen && !isLast && <div className="w-full border-b border-white/20" />}
-            </div>
-          );
-        })}
+                {/* Answer */}
+                <div
+                  className={`
+                    overflow-hidden transition-all duration-300 ease-in-out
+                    ${isOpen ? "max-h-96 opacity-100 pb-6 pt-4" : "max-h-0 opacity-0"}
+                  `}
+                  style={{
+                    borderBottom: !isLast ? "1px solid rgba(255,255,255,0.05)" : "none",
+                  }}
+                >
+                  <div className="relative rounded-lg bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/5 p-3 sm:p-4">
+                    {/* Decorative icon */}
+                    <div className="absolute top-3 left-3 w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+
+                    <p
+                      className="
+                        text-gray-300
+                        text-sm sm:text-[0.9375rem] md:text-base
+                        leading-relaxed
+                        pl-12
+                      "
+                      style={{ fontFamily: "Poppins, sans-serif" }}
+                    >
+                      {item.a}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Bottom CTA */}
+        <div className="text-center mt-10 sm:mt-12">
+          <p className="text-gray-400 text-sm sm:text-base mb-1" style={{ fontFamily: "Poppins, sans-serif" }}>
+            Still have questions?
+          </p>
+          <a
+            href="/contact"
+            className="inline-flex items-center gap-2 text-orange-500 hover:text-orange-400 font-medium transition-colors"
+            style={{ fontFamily: "Poppins, sans-serif" }}
+          >
+            Contact our support team
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
       </div>
     </section>
   );

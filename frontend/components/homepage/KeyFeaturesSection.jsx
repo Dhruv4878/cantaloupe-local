@@ -32,15 +32,26 @@ const featureData = [
 const KeyFeaturesSection = () => {
   return (
     <section className="relative w-full text-white">
-      {/* Content Wrapper */}
-      <div className="mx-auto w-full max-w-[1200px] px-4 sm:px-6 lg:px-8">
+      {/* Content Wrapper - matching hero section structure */}
+      <div
+        className="
+          relative mx-auto
+          w-full
+          max-w-[calc(100vw-24px)]
+          sm:max-w-[calc(100vw-64px)]
+          lg:max-w-[calc(100vw-200px)]
+        "
+      >
         {/* Section Header */}
-        <div className="relative mx-auto mt-0 sm:mt-0 flex max-w-5xl flex-col items-center gap-2 text-center">
+        <div className="relative mx-auto flex max-w-6xl flex-col items-center gap-4 text-center mb-12 sm:mb-16">
+
           <h2
             className="
               keyfeatures-heading
-              text-2xl sm:text-3xl md:text-[32px] lg:text-[39px]
-              leading-[130%] lg:leading-[150%]
+              text-[1.375rem] sm:text-[1.75rem] md:text-[2rem] lg:text-[2.25rem] xl:text-[2.75rem]
+              leading-[120%] lg:leading-[130%]
+              bg-gradient-to-br from-white via-white to-gray-300
+              bg-clip-text text-transparent
             "
           >
             Key Features of PostGenerator.AI
@@ -48,9 +59,11 @@ const KeyFeaturesSection = () => {
           <p
             className="
               keyfeatures-subtext
-              text-sm sm:text-base md:text-lg lg:text-[25px]
-              leading-[140%] lg:leading-[150%]
+              text-[0.875rem] md:text-[1.125rem] lg:text-[1.25rem]
+              leading-[150%] lg:leading-[160%]
               px-4 sm:px-0
+              max-w-2xl
+              text-gray-300
             "
           >
             Everything You Need to Create Better, Faster Content
@@ -60,7 +73,7 @@ const KeyFeaturesSection = () => {
         {/* Cards Grid */}
         <div
           className="
-            mt-10 sm:mt-12
+            mt-10 sm:mt-10
             grid grid-cols-1 md:grid-cols-2
             gap-y-8 sm:gap-y-10
             gap-x-6 lg:gap-x-10
@@ -75,9 +88,6 @@ const KeyFeaturesSection = () => {
             />
           ))}
         </div>
-
-        {/* Extra bottom spacing so it feels centered in viewport */}
-        {/* <div className="h-10 sm:h-12 lg:h-16" /> */}
       </div>
     </section>
   );
