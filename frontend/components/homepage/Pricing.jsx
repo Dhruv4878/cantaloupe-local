@@ -1,7 +1,8 @@
 "use client";
 import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Sparkles } from "lucide-react"; // Added icons for the new section
+import { ArrowRight, Sparkles } from "lucide-react";
+import GradientButton from "@/components/GradientButton";
 
 // ... [Keep CheckCircleIcon exactly as is] ...
 const CheckCircleIcon = ({ className = "w-5 h-5" }) => (
@@ -82,15 +83,21 @@ export default function Pricing() {
   };
 
   return (
-    <section className="w-full bg-[#070616] py-20 sm:py-24 lg:py-32">
-      <div className="mx-auto w-[calc(100vw-40px)] max-w-7xl">
+    <section className="relative w-full bg-[#070616] text-white pt-28 pb-20 sm:pt-36 sm:pb-24 lg:pt-36 lg:pb-32">
+      {/* Content Wrapper - matching homepage sections */}
+      <div
+        className="
+          relative mx-auto
+          w-full
+          max-w-[calc(100vw-24px)]
+          sm:max-w-[calc(100vw-64px)]
+          lg:max-w-[calc(100vw-200px)]
+          "
+      >
         {/* Header Section */}
-        <div className="text-center mb-16">
-          <p className="text-sm font-semibold uppercase tracking-[0.5em] text-white/60">
-            Pricing
-          </p>
+        <div className="text-center mb-12 sm:mb-16">
           <h2
-            className="mt-3 text-4xl font-extrabold text-white sm:text-5xl lg:text-6xl"
+            className="mt-3 text-[1.625rem] sm:text-[2.25rem] md:text-5xl lg:text-6xl font-extrabold text-white leading-[1.15] sm:leading-[1.1] md:leading-[120%]"
             style={{ fontFamily: '"Monument Extended", sans-serif' }}
           >
             Plans that{" "}
@@ -99,7 +106,7 @@ export default function Pricing() {
             </span>{" "}
             with every campaign.
           </h2>
-          <p className="mt-4 max-w-2xl mx-auto text-base text-white/75 sm:text-lg">
+          <p className="mt-4 max-w-2xl mx-auto text-[0.9375rem] sm:text-base md:text-lg text-white/75 leading-relaxed">
             Start free, then choose a plan when you’re ready to scale your
             content pipeline. Switch tiers or cancel anytime—no lock‑ins.
           </p>
@@ -133,7 +140,7 @@ export default function Pricing() {
         </div>
 
         {/* --- CARDS GRID --- */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="flex flex-wrap justify-center gap-6">
           {plans.map((p) => {
             const monthly = p.price_monthly;
             const yearly = p.price_yearly || monthly * 12;
@@ -167,61 +174,61 @@ export default function Pricing() {
             return (
               <div
                 key={p._id}
-                className={`group relative flex flex-col rounded-3xl border ${borderColor} ${bgGradient} p-6 ${shadowClass} transition-all duration-300 hover:-translate-y-1 hover:border-white/20`}
+                className={`group relative flex flex-col rounded-[1.25rem] sm:rounded-3xl border ${borderColor} ${bgGradient} p-5 sm:p-6 ${shadowClass} transition-all duration-300 hover:-translate-y-1 hover:border-white/20 w-full sm:w-[calc(50%-12px)] lg:w-[280px] xl:w-[300px] mx-auto`}
               >
                 {/* Recommended Badge */}
                 {isRec && (
                   <div className="absolute -top-3 left-0 right-0 mx-auto flex justify-center">
-                    <span className="rounded-full bg-gradient-to-r from-orange-500 to-purple-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
+                    <span className="rounded-full bg-gradient-to-r from-orange-500 to-purple-500 px-3 py-1 text-[0.625rem] font-bold uppercase tracking-wider text-white shadow-lg">
                       Recommended
                     </span>
                   </div>
                 )}
 
                 {/* Card Header */}
-                <div className="mb-6">
-                  <h3 className="text-xl font-bold text-white">{p.name}</h3>
-                  <p className="mt-2 text-sm text-white/50 h-10 line-clamp-2">
+                <div className="mb-4 sm:mb-6">
+                  <h3 className="text-lg sm:text-xl font-bold text-white">{p.name}</h3>
+                  <p className="mt-1 sm:mt-2 text-[0.8125rem] sm:text-sm text-white/50 h-8 sm:h-10 line-clamp-2">
                     {p.description ||
                       "Perfect for scaling your social presence."}
                   </p>
                 </div>
 
                 {/* Price Section */}
-                <div className="mb-6">
+                <div className="mb-4 sm:mb-6">
                   {/* Strikethrough - Cleanly positioned above */}
                   {showDiscount && (
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-sm font-medium text-white/40 line-through">
                         ₹{originalAnnualPrice}
                       </span>
-                      <span className="rounded-md bg-green-500/10 px-1.5 py-0.5 text-[10px] font-bold text-green-400">
+                      <span className="rounded-md bg-green-500/10 px-1.5 py-0.5 text-[0.625rem] font-bold text-green-400">
                         SAVE{" "}
                         {Math.round(
                           ((originalAnnualPrice - yearly) /
                             originalAnnualPrice) *
-                            100,
+                          100,
                         )}
                         %
                       </span>
                     </div>
                   )}
 
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-extrabold tracking-tight text-white">
+                  <div className="flex items-baseline gap-1 mt-1 sm:mt-0">
+                    <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
                       ₹{price}
                     </span>
-                    <span className="text-sm font-medium text-white/50">
+                    <span className="text-xs sm:text-sm font-medium text-white/50">
                       /{isAnnual ? "year" : "month"}
                     </span>
                   </div>
                 </div>
 
                 {/* Divider */}
-                <div className="mb-6 h-px w-full bg-white/5"></div>
+                <div className="mb-4 sm:mb-6 h-px w-full bg-white/5"></div>
 
                 {/* Features List */}
-                <ul className="mb-8 space-y-4 flex-1">
+                <ul className="mb-6 sm:mb-8 space-y-3 sm:space-y-4 flex-1">
                   {features.map((t, i) => (
                     <li
                       key={i}
@@ -234,17 +241,21 @@ export default function Pricing() {
                 </ul>
 
                 {/* CTA Button */}
-                <button
-                  onClick={() => handleChoosePlan(p)}
-                  className={`mt-auto w-full rounded-xl py-3 text-sm font-bold transition-all duration-200 
-                  ${
-                    isRec
-                      ? "bg-gradient-to-r from-orange-400 to-purple-500 text-white hover:opacity-90 hover:shadow-lg"
-                      : "bg-white/5 text-white hover:bg-white/10"
-                  }`}
-                >
-                  Choose {p.name}
-                </button>
+                {isRec ? (
+                  <GradientButton
+                    onClick={() => handleChoosePlan(p)}
+                    className="mt-auto w-full px-6 py-2.5 sm:py-3 text-[0.875rem] sm:text-base"
+                  >
+                    Choose {p.name}
+                  </GradientButton>
+                ) : (
+                  <button
+                    onClick={() => handleChoosePlan(p)}
+                    className="mt-auto w-full rounded-full py-2.5 sm:py-3 text-[0.8125rem] sm:text-sm font-semibold bg-white/5 text-white hover:bg-white/10 transition-all duration-200"
+                  >
+                    Choose {p.name}
+                  </button>
+                )}
               </div>
             );
           })}
@@ -274,13 +285,13 @@ export default function Pricing() {
               </div>
 
               <div className="flex shrink-0 flex-col gap-3 sm:flex-row">
-                <button
-                  onClick={() => router.push("/credittopup")} // Assumes your credit page is at /credits
-                  className="group relative flex items-center gap-3 rounded-xl bg-white px-8 py-4 font-bold text-[#070616] shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] transition-all hover:scale-105 hover:bg-[#FFC56E] hover:shadow-[0_0_30px_-5px_rgba(255,197,110,0.5)] active:scale-95"
+                <GradientButton
+                  onClick={() => router.push("/credittopup")}
+                  className="px-8 py-4 text-base"
                 >
                   <span>Buy One-Time Credits</span>
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </button>
+                  <ArrowRight className="h-4 w-4 ml-2 transition-transform group-hover:translate-x-1" />
+                </GradientButton>
               </div>
             </div>
           </div>

@@ -120,7 +120,7 @@ export default function SignupPage() {
       const data = await response.json();
       if (data.token) {
         sessionStorage.setItem("authToken", data.token);
-        
+
         const rawFlag =
           data && (data.hasProfile ?? data.hasflag ?? data.userHasProfile);
         const hasProfileNorm =
@@ -137,15 +137,15 @@ export default function SignupPage() {
           const profileRes = await fetch(`${apiUrlBase}/profile/me`, {
             headers: { Authorization: `Bearer ${data.token}` },
           });
-          
+
           if (profileRes.ok) {
             const profile = await profileRes.json();
             sessionStorage.setItem("hasProfile", "true");
-            
+
             // Get user email if available
             const email = (profile?.user?.email || user?.email || "").trim();
             if (email) sessionStorage.setItem("userEmail", email);
-            
+
             // User has existing profile - redirect to dashboard
             sessionStorage.setItem("flashMessage", "Signed in successfully");
             router.push("/dashboard");
@@ -299,7 +299,7 @@ export default function SignupPage() {
           {/* header */}
           <div className="space-y-2 text-center ">
             <h1
-              className="text-[30px] sm:text-[32px] font-bold leading-tight"
+              className="text-[1.875rem] sm:text-[2rem] md:text-[2rem] lg:text-[2.25rem] font-bold leading-tight"
               style={{
                 background:
                   "linear-gradient(119.02deg, rgb(252,172,0) -22.94%, rgb(255,110,0) 83.73%)",
